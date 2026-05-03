@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from src.planner.fetcher import FetchedPage
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ class SearchContext:
     results: list[SearchResult] = field(default_factory=list)
     total_estimated: int = 0
     searched_at: float = 0.0
+    deep_results: list[FetchedPage] = field(default_factory=list)
 
     def is_empty(self) -> bool:
         return len(self.results) == 0
@@ -80,6 +82,24 @@ class SearchContext:
                 lines.append(f"      日期: {r.published_date}")
             lines.append(f"      来源: {r.site_name or r.url}")
             lines.append(f"      {r.description}")
+            lines.append("")
+        return "\n".join(lines)
+
+    def to_deep_prompt_block(self) -> str:
+        """包含已抓取页面内容的增强版 prompt 块"""
+        block = self.to_prompt_block()
+        if not self.deep_results:
+            return block
+
+        lines = [block, "\n--- 以下为部分搜索结果页面的详细内容 ---\n"]
+        for i, page in enumerate(self.deep_results, 1):
+            lines.append(f"  [详情 {i}] {page.title}")
+            lines.append(f"      来源: {page.url}")
+            lines.append(f"      正文 ({len(page.text)} 字符):")
+            text_preview = page.text[:600]
+            lines.append(f"      {text_preview}")
+            if len(page.text) > 600:
+                lines.append("      ...")
             lines.append("")
         return "\n".join(lines)
 
@@ -197,4 +217,34 @@ class WebSearcher:
             ctx.results = ctx.results[:50]
 
         ctx.total_estimated = max(ctx.total_estimated, len(ctx.results))
+        return ctx
+
+    def deep_search(
+        self,
+        topic: str,
+        additional_queries: list[str] | None = None,
+        max_pages: int = 3,
+    ) -> SearchContext:
+        """联网搜索 + 深入抓取——搜到结果后自动抓取部分页面详情
+
+        先用 search_topic 获取搜索结果，再用 WebPageFetcher 抓取
+        前 max_pages 个结果页面的完整正文，把结果存入 ctx.deep_results。
+
+        Args:
+            topic: 主题
+            additional_queries: 附加搜索
+            max_pages: 最多抓取的页面数
+
+        Returns:
+            含 deep_results 的 SearchContext
+        """
+        ctx = self.search_topic(topic, additional_queries)
+        if ctx.is_empty():
+            return ctx
+
+        from src.planner.fetcher import WebPageFetcher
+
+        fetcher = WebPageFetcher()
+        urls = [r.url for r in ctx.results if r.url and r.url.startswith("http")]
+        ctx.deep_results = fetcher.fetch_results(urls, max_pages=max_pages)
         return ctx

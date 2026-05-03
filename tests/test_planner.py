@@ -556,3 +556,85 @@ class TestWebSearcher:
         ws = searcher.WebSearcher(script_path="/nonexistent/path/search.js")
         ctx = ws.search("anything")
         assert ctx.to_prompt_block() == "(无搜索结果)"
+
+    def test_deep_search_fallback_on_no_script(self):
+        ws = searcher.WebSearcher(script_path="/nonexistent/path/search.js")
+        ctx = ws.deep_search("test", max_pages=2)
+        assert ctx.is_empty()
+        assert len(ctx.deep_results) == 0
+
+
+# ═══════════════════════════════════════════════
+# WebPageFetcher 单元测试
+# ═══════════════════════════════════════════════
+
+from src.planner.fetcher import FetchedPage, WebPageFetcher, _TextExtractor
+
+
+class TestFetchedPage:
+    """FetchedPage 数据类测试"""
+
+    def test_success_property(self):
+        p = FetchedPage(url="https://example.com", status_code=200)
+        assert p.success
+
+    def test_failure_property(self):
+        p = FetchedPage(url="https://example.com", status_code=0, error="err")
+        assert not p.success
+
+    def test_error_result(self):
+        p = FetchedPage.error_result("https://x.com", "连接失败")
+        assert p.url == "https://x.com"
+        assert p.error == "连接失败"
+        assert p.status_code == 0
+
+    def test_summary_error(self):
+        p = FetchedPage.error_result("https://x.com", "超时")
+        assert "抓取失败" in p.summary()
+        assert "超时" in p.summary()
+
+    def test_summary_success(self):
+        p = FetchedPage(url="https://x.com", title="Test", text="Hello world", status_code=200)
+        s = p.summary(max_chars=50)
+        assert "Test" in s
+        assert "Hello" in s
+
+
+class TestTextExtractor:
+    """HTML 文本提取测试"""
+
+    def test_simple_text(self):
+        e = _TextExtractor()
+        e.feed("<p>Hello World</p>")
+        assert e.get_text() == "Hello World"
+
+    def test_skip_script(self):
+        e = _TextExtractor()
+        e.feed("<p>Hello</p><script>x=1</script><p>World</p>")
+        assert "Hello World" == e.get_text()
+
+    def test_block_spacing(self):
+        e = _TextExtractor()
+        e.feed("<p>A</p><p>B</p>")
+        assert "A B" in e.get_text() or "A\n\nB" in e.get_text()
+
+
+class TestWebPageFetcher:
+    """WebPageFetcher 单元测试"""
+
+    def test_bad_url(self):
+        f = WebPageFetcher(timeout=3)
+        p = f.fetch("https://nonexistent-domain-12345.test/")
+        assert not p.success
+        assert p.error
+
+    def test_fetch_results_empty(self):
+        f = WebPageFetcher(timeout=3)
+        pages = f.fetch_results([])
+        assert pages == []
+
+    def test_fetch_results_max(self):
+        f = WebPageFetcher(timeout=3)
+        pages = f.fetch_results(["a", "b", "c"], max_pages=1)
+        # 最多尝试 1 个 URL，但会失败
+        assert len(pages) == 0

@@ -12,6 +12,7 @@ from src.planner.schemas import (
     WritingRecommendation,
 )
 from src.planner.searcher import SearchContext, SearchResult, WebSearcher
+from src.planner.fetcher import FetchedPage, WebPageFetcher
 
 __all__ = [
     "LLMClient",
@@ -26,4 +27,6 @@ __all__ = [
     "SearchContext",
     "SearchResult",
     "WebSearcher",
+    "FetchedPage",
+    "WebPageFetcher",
 ]

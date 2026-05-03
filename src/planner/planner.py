@@ -212,8 +212,10 @@ class Planner:
         topic: str,
         additional_queries: list[str] | None = None,
         analyze_context: bool = False,
+        deep_fetch: bool = False,
+        max_fetch_pages: int = 3,
     ) -> RetrievalPlan:
-        """端到端：联网搜索 → (可选分析) → 检索规划
+        """端到端：联网搜索 → (可选深度抓取) → (可选分析) → 检索规划
 
         一键完成预搜索和规划的全流程。
         相当于 search_web() + plan_retrieval(web_context=...)。
@@ -222,26 +224,40 @@ class Planner:
             topic: 综述主题
             additional_queries: 附加搜索词
             analyze_context: 是否用 LLM 分析搜索结果
+            deep_fetch: 是否深入抓取搜索结果页面（需要 httpx）
+            max_fetch_pages: 最多抓取的页面数
 
         Returns:
             RetrievalPlan 对象
         """
         logger.info("plan_with_search: searching web for topic=%r", topic)
-        ctx = self.search_web(topic, additional_queries)
+
+        if deep_fetch:
+            logger.info("plan_with_search: deep fetch enabled (max_pages=%d)", max_fetch_pages)
+            ctx = self.searcher.deep_search(topic, additional_queries, max_pages=max_fetch_pages)
+        else:
+            ctx = self.search_web(topic, additional_queries)
 
         if ctx.is_empty():
             logger.info("plan_with_search: no web results, falling back to knowledge-only plan")
             return self.plan_retrieval(topic)
 
         logger.info(
-            "plan_with_search: got %d results, formulating plan",
+            "plan_with_search: got %d results (%d fetched)",
             len(ctx.results),
+            len(ctx.deep_results),
         )
-        return self.plan_retrieval(
-            topic=topic,
-            web_context=ctx,
-            analyze_context=analyze_context,
-        )
+
+        # 如果有 deep_results，用 to_deep_prompt_block 提供更丰富的上下文
+        if ctx.deep_results:
+            web_context_str = ctx.to_deep_prompt_block()
+            return self.plan_retrieval(topic=topic, web_context=web_context_str)
+        else:
+            return self.plan_retrieval(
+                topic=topic,
+                web_context=ctx,
+                analyze_context=analyze_context,
+            )
 
     def evaluate_coverage(
         self,
