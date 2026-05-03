@@ -42,5 +42,18 @@ class Settings:
         )
     )
 
+    # ── LLM ──
+    llm_api_key: str = field(
+        default_factory=lambda: environ.get("LLM_API_KEY", "")
+    )
+    llm_base_url: str = field(
+        default="https://api.siliconflow.cn/v1"
+    )
+    llm_model: str = field(default="Qwen/Qwen3-8B")
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 2000
+    llm_timeout_seconds: float = 60.0
+    llm_max_retries: int = 2
+
 
 settings = Settings()

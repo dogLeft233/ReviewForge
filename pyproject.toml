@@ -38,3 +38,7 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "integration: test that requires LLM API (skipped without LLM_API_KEY)",
+    "e2e: end-to-end test covering full planner workflow",
+]
