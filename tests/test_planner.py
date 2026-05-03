@@ -5,6 +5,7 @@ import pytest
 from dataclasses import fields
 
 from src.planner import Planner, RetrievalPlan, CoverageEvaluation, LLMClient
+from src.planner import searcher
 from src.planner.prompts import get_prompt, PROMPT_REGISTRY
 from src.planner.schemas import QuerySpec, SupplementaryQuery, SynthesisResult
 
@@ -99,10 +100,17 @@ class TestPrompts:
                 )
             elif name == "synthesize_insights":
                 kwargs.update(papers_summary="论文列表", resources_summary="资源列表")
+            elif name == "analyze_web_context":
+                kwargs.update(search_results="搜索结果摘要")
             for version in PROMPT_REGISTRY[name]:
-                prompt = get_prompt(name, version, **kwargs)
+                extra = {}
+                if name == "plan_retrieval" and version == "v2":
+                    extra = {"web_context": "搜索上下文"}
+                prompt = get_prompt(name, version, **(kwargs | extra))
                 assert "test" in prompt, f"{name}/{version} 未正确格式化"
                 assert len(prompt) > 50, f"{name}/{version} 内容过短"
+                if name == "plan_retrieval" and version == "v2":
+                    assert "搜索上下文" in prompt, f"v2 未包含 web_context 内容"
 
     def test_get_prompt_with_multiple_params(self):
         """多参数格式化"""
@@ -469,3 +477,82 @@ class TestPlannerE2E:
 
         # 最终断言
         assert len(syn.evolution_paths) > 0 or len(syn.hot_topics) > 0
+
+
+# ═══════════════════════════════════════════════
+# WebSearcher 单元测试
+# ═══════════════════════════════════════════════
+
+
+class TestSearchResult:
+    """SearchResult 数据类测试"""
+
+    def test_minimal(self):
+        r = searcher.SearchResult()
+        assert r.title == ""
+        assert r.description == ""
+
+    def test_from_dict_full(self):
+        r = searcher.SearchResult.from_dict({
+            "title": "Big Data Survey 2024",
+            "url": "https://example.com/paper",
+            "description": "A comprehensive survey",
+            "summary": "Detailed summary here",
+            "siteName": "arXiv",
+            "publishedDate": "2024-01-15",
+        })
+        assert r.title == "Big Data Survey 2024"
+        assert r.summary == "Detailed summary here"
+        assert r.site_name == "arXiv"
+        assert r.published_date == "2024-01-15"
+
+    def test_from_dict_summary_fallback(self):
+        r = searcher.SearchResult.from_dict({
+            "title": "ML Trends",
+            "description": "Falls back to this",
+        })
+        assert r.summary == "Falls back to this"
+
+
+class TestSearchContext:
+    """SearchContext 数据类测试"""
+
+    def test_empty(self):
+        ctx = searcher.SearchContext(topic="test")
+        assert ctx.is_empty()
+        assert ctx.to_prompt_block() == "(无搜索结果)"
+
+    def test_with_results(self):
+        results = [
+            searcher.SearchResult(title="Paper 1", description="Desc 1", site_name="arXiv"),
+            searcher.SearchResult(title="Paper 2", description="Desc 2", published_date="2024-03-01"),
+        ]
+        ctx = searcher.SearchContext(topic="ML", results=results, total_estimated=10)
+        assert not ctx.is_empty()
+        block = ctx.to_prompt_block()
+        assert "Paper 1" in block
+        assert "Paper 2" in block
+        assert "arXiv" in block
+        assert "2024-03-01" in block
+        assert "ML" in block
+
+
+class TestWebSearcher:
+    """WebSearcher 类测试"""
+
+    def test_script_not_found(self):
+        ws = searcher.WebSearcher(script_path="/nonexistent/path/search.js")
+        ctx = ws.search("test")
+        assert ctx.is_empty()
+        assert ctx.topic == "test"
+
+    def test_search_topic_with_additional_empty_fallback(self):
+        ws = searcher.WebSearcher(script_path="/nonexistent/path/search.js")
+        ctx = ws.search_topic("test", additional_queries=["survey"])
+        assert ctx.is_empty()
+        assert ctx.topic == "test"
+
+    def test_to_prompt_block_empty(self):
+        ws = searcher.WebSearcher(script_path="/nonexistent/path/search.js")
+        ctx = ws.search("anything")
+        assert ctx.to_prompt_block() == "(无搜索结果)"

@@ -29,6 +29,7 @@ from src.planner.schemas import (
     RetrievalPlan,
     SynthesisResult,
 )
+from src.planner.searcher import SearchContext, WebSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,87 @@ logger = logging.getLogger(__name__)
 class Planner:
     """检索规划与评估器"""
 
-    def __init__(self, llm_client: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        web_searcher: WebSearcher | None = None,
+    ) -> None:
         self.llm = llm_client or LLMClient()
+        self.searcher = web_searcher or WebSearcher()
 
-    def plan_retrieval(self, topic: str) -> RetrievalPlan:
+    # ── 联网预搜索 ──
+
+    def search_web(
+        self,
+        topic: str,
+        additional_queries: list[str] | None = None,
+    ) -> SearchContext:
+        """Step 0 (可选): 联网搜索主题，获取真实世界的研究现状
+
+        在调用 plan_retrieval 之前先搜索 Web，
+        让 LLM 基于实际内容而非训练数据生成子方向。
+
+        Args:
+            topic: 综述主题
+            additional_queries: 附加搜索词，如 ["survey", "最新进展"]
+
+        Returns:
+            SearchContext 对象（可传入 plan_retrieval 的 web_context 参数）
+        """
+        return self.searcher.search_topic(
+            topic=topic,
+            additional_queries=additional_queries,
+        )
+
+    def analyze_web_context(
+        self,
+        topic: str,
+        search_context: SearchContext,
+    ) -> dict:
+        """用 LLM 将搜索结果分析为结构化研究概览
+
+        可选步骤，在 plan_retrieval 前对搜索结果做一次 LLM 分析。
+
+        Args:
+            topic: 综述主题
+            search_context: search_web() 返回的结果
+
+        Returns:
+            结构化分析（方向、热点、新兴趋势等）
+        """
+        if search_context.is_empty():
+            return {}
+
+        prompt = get_prompt(
+            "analyze_web_context",
+            topic=topic,
+            search_results=search_context.to_prompt_block(),
+        )
+
+        try:
+            return self.llm.chat_json(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是研究趋势分析专家。"
+                            "请严格按照用户要求的 JSON 格式输出，不要添加任何额外文字。"
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1500,
+            )
+        except (RuntimeError, ValueError):
+            logger.warning("Web context analysis failed, proceeding without it")
+            return {}
+
+    def plan_retrieval(
+        self,
+        topic: str,
+        web_context: SearchContext | str | None = None,
+        analyze_context: bool = False,
+    ) -> RetrievalPlan:
         """Step 1: 分析主题，生成检索规划
 
         基于 LLM 对主题的理解，产出：
@@ -48,8 +126,14 @@ class Planner:
         - 经典/前沿工作搜索策略
         - 需要的资源类型
 
+        如果传入了 web_context（来自 search_web() 的结果），
+        会自动使用 v2 prompt 将联网搜索结果注入为上下文，
+        让 LLM 基于真实世界的研究现状来规划，减少幻觉。
+
         Args:
             topic: 综述主题，如 "大数据处理技术综述"
+            web_context: 来自 search_web() 的搜索结果（可选）
+            analyze_context: 如果为 True，先用 LLM 分析搜索结果为结构化概览
 
         Returns:
             RetrievalPlan 对象
@@ -58,7 +142,35 @@ class Planner:
             ValueError: LLM 返回无效 JSON 或缺少关键字段
             RuntimeError: LLM 调用失败（重试耗尽）
         """
-        prompt = get_prompt("plan_retrieval", topic=topic)
+        # 如果传了 web_context 但需要先分析，执行 LLM 分析
+        if web_context and analyze_context and not isinstance(web_context, str):
+            analysis = self.analyze_web_context(topic, web_context)
+            if analysis:
+                # 将分析结果格式化为 prompt 上下文
+                lines = [f"研究方向: {', '.join(analysis.get('identified_directions', []))}"]
+                if analysis.get("hot_directions"):
+                    lines.append(f"热点: {', '.join(analysis['hot_directions'])}")
+                if analysis.get("emerging_trends"):
+                    lines.append(f"新兴趋势: {', '.join(analysis['emerging_trends'])}")
+                if analysis.get("key_papers_projects"):
+                    lines.append("关键资源:")
+                    for kp in analysis["key_papers_projects"]:
+                        lines.append(f"  - {kp.get('name')} ({kp.get('type')}): {kp.get('description')}")
+                web_context_str = "\n".join(lines)
+            else:
+                web_context_str = web_context.to_prompt_block() if hasattr(web_context, 'to_prompt_block') else str(web_context)
+        elif isinstance(web_context, SearchContext):
+            web_context_str = web_context.to_prompt_block()
+        elif isinstance(web_context, str):
+            web_context_str = web_context
+        else:
+            web_context_str = None
+
+        # 选择提示词版本
+        if web_context_str:
+            prompt = get_prompt("plan_retrieval", version="v2", topic=topic, web_context=web_context_str)
+        else:
+            prompt = get_prompt("plan_retrieval", topic=topic)
 
         try:
             raw = self.llm.chat_json(
@@ -94,6 +206,42 @@ class Planner:
             )
 
         return plan
+
+    def plan_with_search(
+        self,
+        topic: str,
+        additional_queries: list[str] | None = None,
+        analyze_context: bool = False,
+    ) -> RetrievalPlan:
+        """端到端：联网搜索 → (可选分析) → 检索规划
+
+        一键完成预搜索和规划的全流程。
+        相当于 search_web() + plan_retrieval(web_context=...)。
+
+        Args:
+            topic: 综述主题
+            additional_queries: 附加搜索词
+            analyze_context: 是否用 LLM 分析搜索结果
+
+        Returns:
+            RetrievalPlan 对象
+        """
+        logger.info("plan_with_search: searching web for topic=%r", topic)
+        ctx = self.search_web(topic, additional_queries)
+
+        if ctx.is_empty():
+            logger.info("plan_with_search: no web results, falling back to knowledge-only plan")
+            return self.plan_retrieval(topic)
+
+        logger.info(
+            "plan_with_search: got %d results, formulating plan",
+            len(ctx.results),
+        )
+        return self.plan_retrieval(
+            topic=topic,
+            web_context=ctx,
+            analyze_context=analyze_context,
+        )
 
     def evaluate_coverage(
         self,
