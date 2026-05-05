@@ -25,6 +25,38 @@ PLAN_RETRIEVAL_V1 = """你是一个学术综述检索规划专家。
 - huggingface：模型/数据集
 - hackernews：社区讨论/技术热点
 
+## 各源最佳查询策略
+使用以下策略来提升每个源的检索质量：
+
+**arxiv**：英文术语，加 AND 连接概念，加 `cat:` 限定学科分类效果最佳。
+  ✅ `all:transformer AND all:object detection`
+  ✅ `cat:cs.CL AND all:speech synthesis`
+  ❌ `深度学习`（中文在 arxiv 几乎无效）
+
+**semantic_scholar**：短语/精确概念更有效，带引用数可判断影响力。
+  ✅ `"large language model" AND reasoning`
+  ❌ `LLM`（太宽泛）
+
+**dblp**：venue 限定最准，按会议分类是最大优势。
+  ✅ `venue:NeurIPS AND title:transformer`
+  ❌ 纯中文查询（几乎无中文论文）
+
+**github**：加 `stars:>100` 过滤，`language:` 限定语言。
+  ✅ `transformer {topic} stars:>100 language:Python`
+  ❌ 纯 `{topic}` 无 Stars 过滤（排名噪音大）
+
+**huggingface**：加 `task:` 限定任务类型。
+  ✅ `{topic} task:text-to-text`
+  ❌ 纯中文查询（几乎无效）
+
+**hackernews**：英文为主，加 `show hn:` 过滤展示帖。
+  ✅ `LLM evaluation show hn`
+  ❌ 中文讨论（HN 全英文）
+
+**serper**：英文关键词，支持 `site:` 过滤，适合找博客/新闻。
+  ✅ `{topic} site:github.com`
+  ✅ `"{topic}" site:arxiv.org`
+
 ## 输出要求
 输出严格的 JSON 对象（不要添加任何解释文字），格式如下：
 {{
@@ -76,6 +108,38 @@ PLAN_RETRIEVAL_V2 = """你是一个学术综述检索规划专家。
 - github：开源代码项目
 - huggingface：模型/数据集
 - hackernews：社区讨论/技术热点
+
+## 各源最佳查询策略
+使用以下策略来提升每个源的检索质量：
+
+**arxiv**：英文术语，加 AND 连接概念，加 `cat:` 限定学科分类效果最佳。
+  ✅ `all:transformer AND all:object detection`
+  ✅ `cat:cs.CL AND all:speech synthesis`
+  ❌ `深度学习`（中文在 arxiv 几乎无效）
+
+**semantic_scholar**：短语/精确概念更有效，带引用数可判断影响力。
+  ✅ `"large language model" AND reasoning`
+  ❌ `LLM`（太宽泛）
+
+**dblp**：venue 限定最准，按会议分类是最大优势。
+  ✅ `venue:NeurIPS AND title:transformer`
+  ❌ 纯中文查询（几乎无中文论文）
+
+**github**：加 `stars:>100` 过滤，`language:` 限定语言。
+  ✅ `transformer {topic} stars:>100 language:Python`
+  ❌ 纯 `{topic}` 无 Stars 过滤（排名噪音大）
+
+**huggingface**：加 `task:` 限定任务类型。
+  ✅ `{topic} task:text-to-text`
+  ❌ 纯中文查询（几乎无效）
+
+**hackernews**：英文为主，加 `show hn:` 过滤展示帖。
+  ✅ `LLM evaluation show hn`
+  ❌ 中文讨论（HN 全英文）
+
+**serper**：英文关键词，支持 `site:` 过滤，适合找博客/新闻。
+  ✅ `{topic} site:github.com`
+  ✅ `"{topic}" site:arxiv.org`
 
 ## 联网搜索上下文
 以下是针对该主题的联网搜索结果，展示了当前实际研究的分布和热点：
