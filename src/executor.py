@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 import httpx
 
 from src.config import settings
-from src.models import CurationReport, PaperCard, ResourceCard
+from src.models import CurationReport, PaperCard, ResourceCard, SuppleReport
 from src.router import QueryRouter, RoutingDecision
 
 if TYPE_CHECKING:
@@ -202,12 +202,22 @@ class RetrieverManager:
         start_time = time.time()
 
         # 路由：对整个 plan 的每个 QuerySpec 生成决策
-        decisions = self._router.route_plan(
-            plan,
-            mode=routing_mode,
-            top_k=top_k,
-            threshold=threshold,
-        )
+        try:
+            decisions = self._router.route_plan(
+                plan,
+                mode=routing_mode,
+                top_k=top_k,
+                threshold=threshold,
+            )
+        except Exception as e:
+            logger.warning("route_plan failed (%s), using fallback all-source routing", e)
+            decisions = self._route_with_fallback(plan)
+
+
+        # fallback：如果所有 decision 的 routed_sources 都为空，回退到全部 source
+        if all(not d.routed_sources for d in decisions):
+            logger.warning("all decisions have empty sources, using fallback routing")
+            decisions = self._route_with_fallback(plan)
 
         # 按 source 分组：相同 source 的查询合并（避免重复调用）
         source_tasks: dict[str, list[tuple[RoutingDecision, str]]] = defaultdict(list)
@@ -226,9 +236,6 @@ class RetrieverManager:
         all_papers: list[PaperCard] = []
         all_resources: list[ResourceCard] = []
         seen_titles: set[str] = set()  # 去重用
-
-        total_sources = len(source_tasks)
-        completed_sources = 0
 
         # 并发执行所有 source（用 asyncio.gather，跨 Python 版本兼容）
         gather_tasks: list[Awaitable[tuple[list[PaperCard], list[ResourceCard]]]] = []
@@ -351,6 +358,163 @@ class RetrieverManager:
         内部管理事件循环创建和清理。
         """
         return asyncio.run(coro)
+
+    # ── 简化 API ──
+
+
+    def _all_sources(self) -> list[str]:
+        """返回所有可用 source（用于 fallback when embedding 不可用）"""
+        return list(self._retrievers.keys())
+
+
+    def _route_with_fallback(
+        self,
+        plan: "RetrievalPlan",
+    ) -> list[RoutingDecision]:
+        """对 plan 做路由，embedding 不可用时 fallback 到全部 source"""
+        from src.router import RoutingDecision
+
+        decisions = []
+        for spec in plan.queries:
+            try:
+                decision = self._router.route_spec(
+                    spec, mode="embedding", top_k=8, threshold=0.0,
+                )
+                if not decision.routed_sources:
+                    logger.warning(
+                        "embedding routing returned no sources for %r, using all",
+                        spec.query[:40],
+                    )
+                    decision = RoutingDecision(
+                        query_spec=spec,
+                        routed_sources=self._all_sources(),
+                        similarity_scores={},
+                        routing_mode="fallback",
+                    )
+            except Exception as e:
+                logger.warning(
+                    "embedding routing failed for %r (%s), using all sources",
+                    spec.query[:40], e,
+                )
+                decision = RoutingDecision(
+                    query_spec=spec,
+                    routed_sources=self._all_sources(),
+                    similarity_scores={},
+                    routing_mode="fallback",
+                )
+            decisions.append(decision)
+        return decisions
+
+    async def search_all(
+        self,
+        query: str,
+        max_results: int | None = None,
+    ) -> CurationReport:
+        """单查询全源检索（并行，async）
+
+        简化入口，绕过 execute_plan() 直接对单查询执行全源并发检索。
+        等价于 manager.py 的同步 search_all()，但使用 async 并发。
+        """
+        from src.planner.schemas import QuerySpec, RetrievalPlan
+
+        plan = RetrievalPlan(
+            topic=query,
+            queries=[QuerySpec(query=query, language="en", target_sources=[])],
+        )
+        report = await self.execute_plan(plan, routing_mode="embedding")
+        if max_results and len(report.papers) > max_results:
+            report.papers = report.papers[:max_results]
+        return report
+
+    async def supplementary_search(
+        self,
+        gap_queries: list[str],
+        existing_report: CurationReport | None = None,
+        section_query_map: dict[str, list[str]] | None = None,
+        max_results: int | None = None,
+    ) -> SuppleReport:
+        """对细纲缺口执行补搜（async 并发版）
+
+        对每条 gap query 并发执行全源检索，与已有结果去重后输出 SuppleReport。
+
+        Args:
+            gap_queries: 缺口的查询字符串列表
+            existing_report: 已有的检索结果（用于去重）
+            section_query_map: 章节→查询映射 {section_id: [queries]}
+            max_results: 每个查询的最大结果数
+
+        Returns:
+            SuppleReport 对象（含新发现汇总）
+        """
+        from src.planner.schemas import QuerySpec, RetrievalPlan
+
+        start = time.time()
+        unique_queries = list(dict.fromkeys(gap_queries))
+
+        # 已有论文标题（用于去重）
+        existing_titles: set[str] = set()
+        if existing_report:
+            for p in existing_report.papers:
+                if p.title:
+                    existing_titles.add(p.title.lower().strip())
+
+        result_map: dict[str, CurationReport] = {}
+        total_new_papers = 0
+        total_new_resources = 0
+        new_classics = 0
+        new_frontiers = 0
+
+        # 并发执行所有 gap queries
+        async def search_one(q: str) -> tuple[str, CurationReport]:
+            report = await self.search_all(q, max_results)
+            return q, report
+
+        results = await asyncio.gather(
+            *[search_one(q) for q in unique_queries],
+            return_exceptions=True,
+        )
+
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            q, report = result
+            result_map[q] = report
+
+            for p in report.papers:
+                key = p.title.lower().strip() if p.title else ""
+                if key and key not in existing_titles:
+                    total_new_papers += 1
+                    existing_titles.add(key)
+                    if p.citation_count > 50:
+                        new_classics += 1
+                    if p.year >= 2023:
+                        new_frontiers += 1
+            total_new_resources += len(report.resources)
+
+        # 构建章节映射（仅记录有补搜的章节）
+        sections_improved: list[str] = []
+        gap_mapping: dict[str, list[str]] = {}
+        if section_query_map:
+            for sec_id, queries in section_query_map.items():
+                active_queries = [q for q in queries if q in result_map]
+                if active_queries:
+                    gap_mapping[sec_id] = active_queries
+                    sections_improved.append(sec_id)
+
+        duration = time.time() - start
+
+        return SuppleReport(
+            topic=existing_report.topic if existing_report else "补搜",
+            queries_executed=unique_queries,
+            result_map=result_map,
+            total_new_papers=total_new_papers,
+            total_new_resources=total_new_resources,
+            new_classics=new_classics,
+            new_frontiers=new_frontiers,
+            sections_improved=sections_improved,
+            gap_queries=gap_mapping,
+            duration_seconds=duration,
+        )
 
     def close(self) -> None:
         if self._client and not self._client.is_closed:
