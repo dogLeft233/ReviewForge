@@ -5,6 +5,8 @@ from src.planner.planner import Planner
 from src.planner.schemas import (
     CoverageEvaluation,
     EvolutionPath,
+    Outline,
+    OutlineSection,
     QuerySpec,
     RetrievalPlan,
     SupplementaryQuery,
@@ -19,6 +21,8 @@ __all__ = [
     "Planner",
     "CoverageEvaluation",
     "EvolutionPath",
+    "Outline",
+    "OutlineSection",
     "QuerySpec",
     "RetrievalPlan",
     "SupplementaryQuery",

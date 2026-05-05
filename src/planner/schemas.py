@@ -151,6 +151,168 @@ class WritingRecommendation:
         )
 
 
+# ═══════════════════════════════════════════════
+# 综述细纲
+# ═══════════════════════════════════════════════
+
+
+@dataclass(slots=True)
+class OutlineSection:
+    """细纲的一个章节节点"""
+
+    id: str = ""  # "2.1"
+    title: str = ""  # "批处理框架：Hadoop→Spark→Flink"
+    level: int = 1  # 1/2/3
+    description: str = ""  # 本节要回答的核心问题
+    evidence_required: list[str] = field(default_factory=list)  # ["经典文献", "前沿论文", "benchmark"]
+    coverage_status: str = "unknown"  # "sufficient" | "partial" | "insufficient" | "unknown"
+    coverage_rationale: str = ""  # 为什么是这个状态
+    supplementary_queries: list[str] = field(default_factory=list)  # 针对该节的补搜
+    child_sections: list["OutlineSection"] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "OutlineSection":
+        children_raw = d.get("child_sections", [])
+        children = [OutlineSection.from_dict(c) for c in children_raw]
+        return cls(
+            id=d.get("id", ""),
+            title=d.get("title", ""),
+            level=d.get("level", 1),
+            description=d.get("description", ""),
+            evidence_required=d.get("evidence_required", []),
+            coverage_status=d.get("coverage_status", "unknown"),
+            coverage_rationale=d.get("coverage_rationale", ""),
+            supplementary_queries=d.get("supplementary_queries", []),
+            child_sections=children,
+        )
+
+    def to_text(self, indent: int = 0) -> str:
+        """格式化为文本，用于渲染或调试"""
+        prefix = "  " * indent
+        status_icon = {
+            "sufficient": "✅",
+            "partial": "⚠️",
+            "insufficient": "❌",
+            "unknown": "❓",
+        }.get(self.coverage_status, "❓")
+        lines = [f"{prefix}{status_icon} {self.id} {self.title}"]
+        if self.description:
+            lines.append(f"{prefix}   └ {self.description}")
+        if self.coverage_rationale:
+            lines.append(f"{prefix}   └ 评估: {self.coverage_rationale}")
+        if self.supplementary_queries:
+            for sq in self.supplementary_queries:
+                lines.append(f"{prefix}   └ 补搜: {sq}")
+        for child in self.child_sections:
+            lines.append(child.to_text(indent + 1))
+        return "\n".join(lines)
+
+
+@dataclass(slots=True)
+class Outline:
+    """综述细纲——generate_outline() 的核心产出
+
+    既是「检索完备性的测试集」，又是「下游 Writer 的生产蓝图」。
+    """
+
+    topic: str = ""
+    abstract: str = ""  # 摘要草稿
+    sections: list[OutlineSection] = field(default_factory=list)
+    overall_coverage: float = 0.0  # 0.0 ~ 1.0
+    gap_summary: str = ""  # 整体缺漏概况
+    supplementary_queries: list[str] = field(default_factory=list)  # 全局补搜建议
+
+    @classmethod
+    def from_dict(cls, topic: str, d: dict[str, Any]) -> "Outline":
+        sections_raw = d.get("sections", [])
+        sections = [OutlineSection.from_dict(s) for s in sections_raw]
+        return cls(
+            topic=topic,
+            abstract=d.get("abstract", ""),
+            sections=sections,
+            overall_coverage=d.get("overall_coverage", 0.0),
+            gap_summary=d.get("gap_summary", ""),
+            supplementary_queries=d.get("supplementary_queries", []),
+        )
+
+    @property
+    def needs_supplement(self) -> bool:
+        """是否有任何章节需要补充检索"""
+        if self.supplementary_queries:
+            return True
+        return any(
+            self._section_needs_supplement(s)
+            for s in self.sections
+        )
+
+    def collect_gap_queries(self) -> tuple[list[str], dict[str, list[str]]]:
+        """提取所有缺口查询
+
+        递归收集全局 + 各章节的 supplementary_queries。
+
+        Returns:
+            (all_queries, section_map)
+            - all_queries: 去重后的所有查询字符串
+            - section_map: {section_id: [queries]} 标记每个查询来自哪个章节
+        """
+        all_queries: list[str] = []
+        section_map: dict[str, list[str]] = {}
+
+        # 全局查询
+        for q in self.supplementary_queries:
+            if q not in all_queries:
+                all_queries.append(q)
+
+        # 逐章节收集（递归）
+        self._collect_section_queries(self.sections, all_queries, section_map)
+
+        return all_queries, section_map
+
+    @staticmethod
+    def _collect_section_queries(
+        sections: list[OutlineSection],
+        all_queries: list[str],
+        section_map: dict[str, list[str]],
+    ) -> None:
+        for sec in sections:
+            if sec.supplementary_queries:
+                section_map[sec.id] = sec.supplementary_queries
+                for q in sec.supplementary_queries:
+                    if q not in all_queries:
+                        all_queries.append(q)
+            if sec.child_sections:
+                Outline._collect_section_queries(sec.child_sections, all_queries, section_map)
+
+    @staticmethod
+    def _section_needs_supplement(section: OutlineSection) -> bool:
+        if section.coverage_status in ("insufficient", "partial"):
+            return True
+        return any(
+            Outline._section_needs_supplement(c)
+            for c in section.child_sections
+        )
+
+    def to_full_text(self) -> str:
+        """格式化为完整文本，可直接用于预览"""
+        lines = [
+            f"# {self.topic}",
+            f"",
+            f"**摘要**: {self.abstract}",
+            f"",
+            f"**整体覆盖度**: {self.overall_coverage:.0%}",
+        ]
+        if self.gap_summary:
+            lines.append(f"**缺漏概况**: {self.gap_summary}")
+        if self.supplementary_queries:
+            lines.append(f"**需要补搜**:")
+            for q in self.supplementary_queries:
+                lines.append(f"  - {q}")
+        lines.append("")
+        for section in self.sections:
+            lines.append(section.to_text())
+        return "\n".join(lines)
+
+
 @dataclass(slots=True)
 class SynthesisResult:
     """洞察综合结果"""

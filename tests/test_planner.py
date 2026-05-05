@@ -7,7 +7,10 @@ from dataclasses import fields
 from src.planner import Planner, RetrievalPlan, CoverageEvaluation, LLMClient
 from src.planner import searcher
 from src.planner.prompts import get_prompt, PROMPT_REGISTRY
-from src.planner.schemas import QuerySpec, SupplementaryQuery, SynthesisResult
+from src.planner.schemas import (
+    QuerySpec, SupplementaryQuery, SynthesisResult,
+    Outline, OutlineSection,
+)
 
 # ═══════════════════════════════════════════════
 # 辅助函数
@@ -100,6 +103,10 @@ class TestPrompts:
                 )
             elif name == "synthesize_insights":
                 kwargs.update(papers_summary="论文列表", resources_summary="资源列表")
+            elif name == "generate_outline":
+                kwargs.update(
+                    papers_summary="论文列表", resources_summary="资源列表",
+                )
             elif name == "analyze_web_context":
                 kwargs.update(search_results="搜索结果摘要")
             for version in PROMPT_REGISTRY[name]:
@@ -221,6 +228,215 @@ class TestSchemas:
         q = SupplementaryQuery(query="test")
         assert q.target_sources == []
 
+    # ── Outline 模型 ──
+
+    def test_outline_section_from_dict(self):
+        """OutlineSection 可以从字典正确构造"""
+        data = {
+            "id": "2.1",
+            "title": "批处理框架演进",
+            "level": 2,
+            "description": "从Hadoop MapReduce到Spark的演进脉络",
+            "evidence_required": ["MapReduce原始论文", "Spark论文"],
+            "coverage_status": "partial",
+            "coverage_rationale": "找到了Spark论文但缺少MapReduce",
+            "supplementary_queries": ["MapReduce原始论文"],
+            "child_sections": [
+                {
+                    "id": "2.1.1",
+                    "title": "Hadoop MapReduce",
+                    "level": 3,
+                    "description": "经典批处理模型",
+                    "evidence_required": [],
+                    "coverage_status": "insufficient",
+                    "coverage_rationale": "未检索到",
+                    "supplementary_queries": ["MapReduce Dean 2004"],
+                    "child_sections": [],
+                }
+            ],
+        }
+        s = OutlineSection.from_dict(data)
+        assert s.id == "2.1"
+        assert s.title == "批处理框架演进"
+        assert s.level == 2
+        assert s.coverage_status == "partial"
+        assert s.supplementary_queries == ["MapReduce原始论文"]
+        assert len(s.child_sections) == 1
+        assert s.child_sections[0].id == "2.1.1"
+        assert s.child_sections[0].coverage_status == "insufficient"
+
+    def test_outline_section_defaults(self):
+        """OutlineSection 缺失字段应使用默认值"""
+        s = OutlineSection.from_dict({})
+        assert s.id == ""
+        assert s.level == 1
+        assert s.coverage_status == "unknown"
+        assert s.child_sections == []
+        assert s.supplementary_queries == []
+
+    def test_outline_section_to_text(self):
+        """OutlineSection.to_text() 输出格式"""
+        s = OutlineSection(
+            id="1", title="引言", level=1,
+            description="研究背景", coverage_status="sufficient",
+        )
+        text = s.to_text()
+        assert "✅" in text
+        assert "1" in text
+        assert "引言" in text
+        assert "研究背景" in text
+
+    def test_outline_section_to_text_with_children(self):
+        """带子章节的 to_text"""
+        child = OutlineSection(
+            id="1.1", title="研究背景", level=2,
+            description="大数据时代背景", coverage_status="partial",
+            supplementary_queries=["大数据发展报告"],
+        )
+        parent = OutlineSection(
+            id="1", title="引言", level=1,
+            coverage_status="partial", child_sections=[child],
+        )
+        text = parent.to_text()
+        assert "⚠️" in text
+        assert "1.1" in text
+        assert "补搜" in text
+
+    def test_outline_from_dict(self):
+        """Outline 可以从字典正确构造"""
+        data = {
+            "abstract": "综述大数据处理技术的发展脉络",
+            "overall_coverage": 0.65,
+            "gap_summary": "缺少流处理相关论文",
+            "supplementary_queries": ["流处理 benchmark"],
+            "sections": [
+                {
+                    "id": "1",
+                    "title": "引言",
+                    "level": 1,
+                    "description": "研究背景",
+                    "evidence_required": [],
+                    "coverage_status": "sufficient",
+                    "coverage_rationale": "",
+                    "supplementary_queries": [],
+                    "child_sections": [],
+                }
+            ],
+        }
+        o = Outline.from_dict("大数据处理技术综述", data)
+        assert o.topic == "大数据处理技术综述"
+        assert o.abstract
+        assert o.overall_coverage == 0.65
+        assert o.gap_summary
+        assert len(o.supplementary_queries) == 1
+        assert len(o.sections) == 1
+        assert o.sections[0].title == "引言"
+
+    def test_outline_empty(self):
+        """空字典应使用默认值"""
+        o = Outline.from_dict("test", {})
+        assert o.topic == "test"
+        assert o.sections == []
+        assert o.overall_coverage == 0.0
+
+    def test_outline_needs_supplement_true(self):
+        """有章节不足时应触发补搜"""
+        o = Outline(
+            topic="test", sections=[
+                OutlineSection(id="1", title="A", coverage_status="sufficient"),
+                OutlineSection(id="2", title="B", coverage_status="insufficient"),
+            ],
+        )
+        assert o.needs_supplement is True
+
+    def test_outline_needs_supplement_false(self):
+        """所有章节充足时不应触发补搜"""
+        o = Outline(
+            topic="test", sections=[
+                OutlineSection(id="1", title="A", coverage_status="sufficient"),
+                OutlineSection(id="2", title="B", coverage_status="sufficient"),
+            ],
+        )
+        assert o.needs_supplement is False
+
+    def test_outline_to_full_text(self):
+        """to_full_text 应产出结构化文本"""
+        o = Outline(
+            topic="大数据处理",
+            abstract="本文综述大数据处理技术",
+            overall_coverage=0.7,
+            gap_summary="缺少流处理内容",
+            sections=[
+                OutlineSection(id="1", title="引言", coverage_status="sufficient"),
+                OutlineSection(id="2", title="核心技术", coverage_status="partial"),
+            ],
+        )
+        text = o.to_full_text()
+        assert "大数据处理" in text
+        assert "70%" in text or "0.7" in text
+        assert "缺漏" in text
+        assert "✅" in text
+        assert "⚠️" in text
+
+    # ── Outline 缺口查询提取 ──
+
+    def test_collect_gap_queries_empty(self):
+        """无缺口时返回空列表"""
+        o = Outline(topic="test", sections=[
+            OutlineSection(id="1", title="A", coverage_status="sufficient"),
+        ])
+        queries, section_map = o.collect_gap_queries()
+        assert queries == []
+        assert section_map == {}
+
+    def test_collect_gap_queries_global_only(self):
+        """仅全局缺口"""
+        o = Outline(
+            topic="test",
+            supplementary_queries=["big data survey"],
+        )
+        queries, section_map = o.collect_gap_queries()
+        assert queries == ["big data survey"]
+        assert section_map == {}
+
+    def test_collect_gap_queries_from_sections(self):
+        """从各章节提取缺口"""
+        o = Outline(topic="test", sections=[
+            OutlineSection(
+                id="2", title="B", coverage_status="partial",
+                supplementary_queries=["cloud storage"],
+                child_sections=[
+                    OutlineSection(
+                        id="2.2", title="B2", coverage_status="insufficient",
+                        supplementary_queries=["MinIO architecture"],
+                    ),
+                ],
+            ),
+            OutlineSection(id="3", title="C", coverage_status="sufficient"),
+        ])
+        queries, section_map = o.collect_gap_queries()
+        assert "cloud storage" in queries
+        assert "MinIO architecture" in queries
+        assert section_map["2"] == ["cloud storage"]
+        assert section_map["2.2"] == ["MinIO architecture"]
+        assert "3" not in section_map  # 充足章节无查询
+
+    def test_collect_gap_queries_dedup(self):
+        """重复查询只出现一次"""
+        o = Outline(
+            topic="test",
+            supplementary_queries=["data lakehouse"],
+            sections=[
+                OutlineSection(
+                    id="5", title="E", coverage_status="partial",
+                    supplementary_queries=["data lakehouse"],
+                ),
+            ],
+        )
+        queries, section_map = o.collect_gap_queries()
+        assert queries == ["data lakehouse"]  # 去重
+        assert "5" in section_map  # 仍记录章节映射
+
 
 class TestLLMClient:
     """LLM 客户端测试"""
@@ -286,6 +502,9 @@ class TestPlannerIntegration:
 
     @pytest.fixture
     def planner(self):
+        import os
+        if not os.environ.get("LLM_API_KEY"):
+            pytest.skip("需要 LLM_API_KEY 环境变量")
         return Planner()
 
     def _run_test_or_skip(self, test_fn, *args, **kwargs):
@@ -385,6 +604,81 @@ class TestPlannerIntegration:
                             "Apache Flink | github | 流处理框架",
         )
         assert len(result.evolution_paths) > 0 or len(result.hot_topics) > 0
+
+    def test_generate_outline(self, planner):
+        """生成细纲 + 覆盖评估"""
+        if not self._has_api_key():
+            pytest.skip("需要 LLM_API_KEY 环境变量")
+
+        # 模拟有论文数据的情况
+        outline = planner.generate_outline(
+            topic="大数据处理技术综述",
+            papers_summary=(
+                "MapReduce | 2004 | 20000+ | 批处理 | OSDI\n"
+                "Spark | 2012 | 10000+ | 批处理/内存计算 | NSDI\n"
+                "Flink | 2015 | 5000+ | 流处理 | VLDB\n"
+                "TensorFlow | 2015 | 15000+ | 深度学习框架 | OSDI\n"
+                "DeepSpeed | 2020 | 2000+ | 分布式优化 | MLSys"
+            ),
+            resources_summary=(
+                "Apache Spark | github | 分布式计算框架\n"
+                "Apache Flink | github | 流处理框架\n"
+                "Horovod | github | 分布式训练框架\n"
+                "MLPerf | benchmark | 机器学习性能基准"
+            ),
+        )
+
+        # 验证细纲基本结构
+        assert outline.topic == "大数据处理技术综述"
+        assert len(outline.sections) > 0, "细纲应包含至少一个章节"
+
+        # 验证各章节结构
+        for i, section in enumerate(outline.sections):
+            assert section.id, f"章节 {i} 缺少 id"
+            assert section.title, f"章节 {i} 缺少 title"
+            assert section.level == 1, f"一级章节 {i} level 应为 1"
+            assert section.coverage_status in (
+                "sufficient", "partial", "insufficient", "unknown"
+            ), f"章节 {i} 覆盖状态异常: {section.coverage_status}"
+
+        # 验证覆盖度指标
+        assert 0 <= outline.overall_coverage <= 1
+
+        # 输出细纲预览
+        print(f"\n{'='*60}")
+        print(f"[细纲预览] 主题: {outline.topic}")
+        print(f"  摘要: {outline.abstract}")
+        print(f"  整体覆盖度: {outline.overall_coverage:.0%}")
+        if outline.gap_summary:
+            print(f"  缺漏概况: {outline.gap_summary}")
+        print(f"  章节数: {len(outline.sections)}")
+        for s in outline.sections:
+            print(f"    [{s.coverage_status}] {s.id} {s.title}")
+            print(f"      └ {s.description[:80] if s.description else '(无描述)'}")
+            if s.child_sections:
+                for c in s.child_sections:
+                    print(f"      ├ [{c.coverage_status}] {c.id} {c.title}")
+        if outline.supplementary_queries:
+            print(f"  补搜建议 ({len(outline.supplementary_queries)} 条):")
+            for q in outline.supplementary_queries:
+                print(f"    - {q}")
+
+    def test_generate_outline_empty(self, planner):
+        """无论文数据时也要能生成细纲"""
+        if not self._has_api_key():
+            pytest.skip("需要 LLM_API_KEY 环境变量")
+
+        outline = planner.generate_outline(
+            topic="大数据处理技术综述",
+        )
+
+        assert outline.topic == "大数据处理技术综述"
+        assert len(outline.sections) > 0
+        # 无论文数据，各节状态至少不是空的
+        for s in outline.sections:
+            assert s.coverage_status in (
+                "sufficient", "partial", "insufficient", "unknown"
+            )
 
     def test_full_plan_without_papers(self, planner):
         """端到端流程——无论文数据时只做规划"""

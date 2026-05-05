@@ -26,6 +26,7 @@ from src.planner.llm import LLMClient
 from src.planner.prompts import get_prompt
 from src.planner.schemas import (
     CoverageEvaluation,
+    Outline,
     RetrievalPlan,
     SynthesisResult,
 )
@@ -370,6 +371,54 @@ class Planner:
 
         result = SynthesisResult.from_dict(raw if isinstance(raw, dict) else {})
         return result
+
+    def generate_outline(
+        self,
+        topic: str,
+        papers_summary: str = "",
+        resources_summary: str = "",
+    ) -> Outline:
+        """生成综述细纲并评估覆盖度
+
+        替代 evaluate_coverage() 的升级版——不仅评估覆盖度，
+        还生成完整的逻辑细纲作为下游 Writer 的蓝图。
+
+        Args:
+            topic: 综述主题
+            papers_summary: 检索到的论文摘要文本
+            resources_summary: 检索到的资源摘要文本
+
+        Returns:
+            Outline 对象（含各节覆盖评估 + 补搜建议）
+        """
+        prompt = get_prompt(
+            "generate_outline",
+            topic=topic,
+            papers_summary=papers_summary or "暂无检索到的论文数据",
+            resources_summary=resources_summary or "暂无检索到的资源数据",
+        )
+
+        try:
+            raw = self.llm.chat_json(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是学术综述细纲生成与覆盖评估专家。"
+                            "请严格按照用户要求的 JSON 格式输出，不要添加任何额外文字。"
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=3000,
+            )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Outline generation failed: {e}") from e
+
+        outline = Outline.from_dict(topic, raw if isinstance(raw, dict) else {})
+        return outline
 
     def full_plan(
         self,

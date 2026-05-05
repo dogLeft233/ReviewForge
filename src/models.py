@@ -113,3 +113,85 @@ class CurationReport:
     # 元数据
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     queries: list[str] = field(default_factory=list)
+
+    def to_papers_summary(self) -> str:
+        """论文列表的文本摘要，用于 LLM 输入"""
+        if not self.papers:
+            return "暂无论文数据"
+        lines = []
+        for p in self.papers:
+            venue_str = p.venue or "-"
+            lines.append(
+                f"{p.title} | {p.year} | {p.citation_count} | "
+                f"{venue_str} | {p.source}"
+            )
+        return "\n".join(lines)
+
+    def to_resources_summary(self) -> str:
+        """资源列表的文本摘要，用于 LLM 输入"""
+        if not self.resources:
+            return "暂无资源数据"
+        lines = []
+        for r in self.resources:
+            desc = r.description or "-"
+            lines.append(f"{r.name} | {r.type} | {desc}")
+        return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────
+# 补搜报告
+# ──────────────────────────────────────────────
+
+@dataclass(slots=True)
+class SuppleReport:
+    """补搜报告——supplementary_search() 的产出
+
+    记录针对细纲缺口执行的所有补搜的结果。
+    """
+
+    topic: str
+    queries_executed: list[str] = field(default_factory=list)
+    """实际执行的查询"""
+    result_map: dict[str, CurationReport] = field(default_factory=dict)
+    """查询 → 检索报告"""
+
+    # 汇总统计
+    total_new_papers: int = 0
+    total_new_resources: int = 0
+    new_classics: int = 0
+    new_frontiers: int = 0
+    sections_improved: list[str] = field(default_factory=list)
+    """哪些章节因此得到了补充"""
+
+    # 原始缺口信息
+    gap_queries: dict[str, list[str]] = field(default_factory=dict)
+    """section_id → [gap queries]（仅记录有补搜的章节）"""
+
+    # 元数据
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    duration_seconds: float = 0.0
+
+    @property
+    def total_queries(self) -> int:
+        return len(self.queries_executed)
+
+    @property
+    def has_new_findings(self) -> bool:
+        return self.total_new_papers > 0 or self.total_new_resources > 0
+
+    def to_summary(self) -> str:
+        """摘要文本"""
+        lines = [
+            f"补搜报告: {self.topic}",
+            f"  执行查询: {self.total_queries} 个",
+            f"  新增论文: {self.total_new_papers} 篇",
+            f"    其中经典: {self.new_classics} | 前沿: {self.new_frontiers}",
+            f"  新增资源: {self.total_new_resources} 个",
+            f"  补充章节: {len(self.sections_improved)} 个",
+            f"  耗时: {self.duration_seconds:.1f}s",
+        ]
+        if self.gap_queries:
+            lines.append(f"  查询分布:")
+            for sec_id, queries in self.gap_queries.items():
+                lines.append(f"    {sec_id}: {', '.join(queries)}")
+        return "\n".join(lines)

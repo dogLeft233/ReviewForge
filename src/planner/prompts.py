@@ -242,8 +242,75 @@ SYNTHESIZE_INSIGHTS_V1 = """你是一个学术综述洞察提取专家。
 """
 
 # ════════════════════════════════════════════════════════════════════
-# 提示词注册表——按版本号索引
+# GENERATE_OUTLINE v1 — 细纲生成 + 覆盖度评估
 # ════════════════════════════════════════════════════════════════════
+
+GENERATE_OUTLINE_V1 = """你是一个学术综述细纲生成与覆盖评估专家。
+
+## 任务
+给定一个综述主题和已有检索结果，做两件事：
+1. 生成一份逻辑严密、结构完整的综述细纲
+2. 对每个章节评估当前检索结果的覆盖程度
+
+## 细纲设计要求
+- 参照《计算机学报》体例
+- 按"问题域"组织章节，而非按工具/系统罗列
+- 每个章节只回答一个核心问题
+- 章节之间要有清晰的逻辑递进关系
+
+## 覆盖度评估标准
+- sufficient: 该章节所需的关键文献、资源均已找到，可以直接写作
+- partial: 找到了部分关键文献，但缺少某些重要方面
+- insufficient: 基本没有找到该章节所需的资源
+- unknown: 无法判断（没有检索结果可参照）
+
+## 已有检索结果
+**综述主题**：{topic}
+
+**论文列表**：
+{papers_summary}
+
+**资源列表**：
+{resources_summary}
+
+## 输出要求
+输出严格的 JSON 对象（不要添加任何解释文字），格式如下：
+{{
+    "abstract": "摘要草稿（2-3句话概括综述内容和结论）",
+    "overall_coverage": 0.7,
+    "gap_summary": "整体缺漏概况",
+    "supplementary_queries": ["全局补搜关键词"],
+    "sections": [
+        {{
+            "id": "1",
+            "title": "章节标题",
+            "level": 1,
+            "description": "本节要回答的核心问题",
+            "evidence_required": ["需要的证据类型，如经典文献、前沿论文、开源项目等"],
+            "coverage_status": "sufficient|partial|insufficient|unknown",
+            "coverage_rationale": "为什么这个状态，具体缺漏什么",
+            "supplementary_queries": ["针对该节的补搜关键词"],
+            "child_sections": [
+                {{
+                    "id": "1.1",
+                    "title": "子节标题",
+                    "level": 2,
+                    "description": "子节核心问题",
+                    "evidence_required": [],
+                    "coverage_status": "sufficient|partial|insufficient|unknown",
+                    "coverage_rationale": "",
+                    "supplementary_queries": [],
+                    "child_sections": []
+                }}
+            ]
+        }}
+    ]
+}}
+"""
+
+# ═══════════════════════════════════════════════
+# 提示词注册表——按版本号索引
+# ═══════════════════════════════════════════════
 
 PROMPT_REGISTRY = {
     "plan_retrieval": {
@@ -258,6 +325,9 @@ PROMPT_REGISTRY = {
     },
     "synthesize_insights": {
         "v1": SYNTHESIZE_INSIGHTS_V1,
+    },
+    "generate_outline": {
+        "v1": GENERATE_OUTLINE_V1,
     },
 }
 

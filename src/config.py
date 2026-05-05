@@ -19,6 +19,11 @@ class Settings:
         default_factory=lambda: environ.get("GITHUB_TOKEN", "")
     )
 
+    # ── Google Serper ──
+    serper_api_key: str = field(
+        default_factory=lambda: environ.get("SERPER_API_KEY", "")
+    )
+
     # ── 重试 ──
     max_retries: int = 3
     retry_delay_seconds: float = 2.0
@@ -52,7 +57,7 @@ class Settings:
     llm_model: str = field(default="Qwen/Qwen3-8B")
     llm_temperature: float = 0.1
     llm_max_tokens: int = 2000
-    llm_timeout_seconds: float = 60.0
+    llm_timeout_seconds: float = 120.0
     llm_max_retries: int = 2
 
 
