@@ -35,16 +35,13 @@ import httpx
 
 from src.config import settings
 from src.models import CurationReport, PaperCard, ResourceCard, SuppleReport
+from src.rate_limits import get_source_config
 from src.router import QueryRouter, RoutingDecision
 
 if TYPE_CHECKING:
     from src.planner.schemas import RetrievalPlan
 
 logger = logging.getLogger(__name__)
-
-# 每个 source 的最大并发数（防止 API 被限流）
-DEFAULT_CONCURRENCY = 3
-
 
 # ──────────────────────────────────────────────
 # Retriever 异步适配器
@@ -63,14 +60,17 @@ class AsyncRetrieverAdapter:
 
     def __init__(
         self,
-        retriever,  # 任意有 search() / search_resources() 的 retriever
-        source_name: str,  # 路由标识，如 "arxiv" "github"
-        concurrency: int = DEFAULT_CONCURRENCY,
+        retriever,
+        source_name: str,
+        concurrency: int | None = None,
     ) -> None:
         self._retriever = retriever
         self._source_name = source_name
-        self._semaphore = asyncio.Semaphore(concurrency)
-        # 底层 retriever 的真实类名（用于日志）
+        cfg = get_source_config(source_name)
+        conc = concurrency if concurrency is not None else cfg.no_key_concurrency
+        self._semaphore = asyncio.Semaphore(conc)
+        self._min_interval = cfg.min_interval_seconds
+        self._last_called = 0.0
         self.name = getattr(retriever, "name", retriever.__class__.__name__)
 
     @property
@@ -78,12 +78,25 @@ class AsyncRetrieverAdapter:
         """返回路由标识（用于与 PAPER_RETRIEVERS / RESOURCE_RETRIEVERS 匹配）"""
         return self._source_name
 
+    async def _enforce_rate_limit(self) -> None:
+        """检查距上次调用的时间间隔，不满足时主动 sleep"""
+        if self._min_interval <= 0:
+            return
+        now = asyncio.get_running_loop().time()
+        elapsed = now - self._last_called
+        if elapsed < self._min_interval:
+            wait = self._min_interval - elapsed
+            logger.debug("%s: rate limit back-off %.1fs", self.name, wait)
+            await asyncio.sleep(wait)
+        self._last_called = asyncio.get_running_loop().time()
+
     async def search(
         self,
         query: str,
         max_results: int | None = None,
     ) -> list[PaperCard]:
         async with self._semaphore:
+            await self._enforce_rate_limit()
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None, lambda: self._retriever.search(query, max_results)
@@ -94,6 +107,7 @@ class AsyncRetrieverAdapter:
         query: str,
     ) -> list[ResourceCard]:
         async with self._semaphore:
+            await self._enforce_rate_limit()
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None, lambda: self._retriever.search_resources(query)
@@ -168,7 +182,7 @@ class RetrieverManager:
             self._retrievers[name] = AsyncRetrieverAdapter(
                 cls(),
                 source_name=name,  # 路由标识，与 PAPER_RETRIEVERS/RESOURCE_RETRIEVERS 匹配
-                concurrency=DEFAULT_CONCURRENCY,
+                concurrency=None,  # 使用 rate_limits.py 配置
             )
 
     async def _ensure_client(self) -> httpx.AsyncClient:
