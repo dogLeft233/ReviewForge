@@ -28,3 +28,11 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Demos and local experiments
+demo_*.py
+plan_fix.py
+
+# Documentation (local only)
+docs/
+OVERVIEW.md
