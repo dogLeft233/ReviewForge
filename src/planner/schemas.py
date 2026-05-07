@@ -77,6 +77,37 @@ class SupplementaryQuery:
         )
 
 
+
+
+def _parse_sq_list(raw: list[Any]) -> list[SupplementaryQuery]:
+    """解析 supplementary_queries 列表，兼容字符串和字典两种格式
+
+    LLM 可能输出:
+    - ["query string"] (纯字符串，旧格式)
+    - [{"query": "...", "target_sources": [...]}] (字典，新格式)
+    """
+    result: list[SupplementaryQuery] = []
+    for item in raw:
+        if isinstance(item, str):
+            result.append(SupplementaryQuery(query=item))
+        elif isinstance(item, dict):
+            result.append(SupplementaryQuery.from_dict(item))
+    return result
+
+
+@dataclass(slots=True)
+class GapQuery:
+    """带来源策略指引的补搜查询，用于 supplementary_search_detailed"""
+    query: str
+    target_sources: list[str] = field(default_factory=list)
+    section_id: str = ""
+    section_title: str = ""
+    language: str = "en"
+
+    def to_display(self) -> str:
+        srcs = ', '.join(self.target_sources) if self.target_sources else '全源'
+        return f"  [{self.section_id}] {self.query} -> {srcs}"
+
 @dataclass(slots=True)
 class CoverageEvaluation:
     """覆盖度评估结果"""
@@ -167,7 +198,7 @@ class OutlineSection:
     evidence_required: list[str] = field(default_factory=list)  # ["经典文献", "前沿论文", "benchmark"]
     coverage_status: str = "unknown"  # "sufficient" | "partial" | "insufficient" | "unknown"
     coverage_rationale: str = ""  # 为什么是这个状态
-    supplementary_queries: list[str] = field(default_factory=list)  # 针对该节的补搜
+    supplementary_queries: list[SupplementaryQuery] = field(default_factory=list)  # 针对该节的补搜
     child_sections: list["OutlineSection"] = field(default_factory=list)
 
     @classmethod
@@ -182,7 +213,7 @@ class OutlineSection:
             evidence_required=d.get("evidence_required", []),
             coverage_status=d.get("coverage_status", "unknown"),
             coverage_rationale=d.get("coverage_rationale", ""),
-            supplementary_queries=d.get("supplementary_queries", []),
+            supplementary_queries=_parse_sq_list(d.get("supplementary_queries", [])),
             child_sections=children,
         )
 
@@ -202,7 +233,8 @@ class OutlineSection:
             lines.append(f"{prefix}   └ 评估: {self.coverage_rationale}")
         if self.supplementary_queries:
             for sq in self.supplementary_queries:
-                lines.append(f"{prefix}   └ 补搜: {sq}")
+                q_text = sq.query if hasattr(sq, 'query') else str(sq)
+                lines.append(f"{prefix}   └ 补搜: {q_text}")
         for child in self.child_sections:
             lines.append(child.to_text(indent + 1))
         return "\n".join(lines)
@@ -220,7 +252,7 @@ class Outline:
     sections: list[OutlineSection] = field(default_factory=list)
     overall_coverage: float = 0.0  # 0.0 ~ 1.0
     gap_summary: str = ""  # 整体缺漏概况
-    supplementary_queries: list[str] = field(default_factory=list)  # 全局补搜建议
+    supplementary_queries: list[SupplementaryQuery] = field(default_factory=list)  # 全局补搜建议
 
     @classmethod
     def from_dict(cls, topic: str, d: dict[str, Any]) -> "Outline":
@@ -232,7 +264,7 @@ class Outline:
             sections=sections,
             overall_coverage=d.get("overall_coverage", 0.0),
             gap_summary=d.get("gap_summary", ""),
-            supplementary_queries=d.get("supplementary_queries", []),
+            supplementary_queries=_parse_sq_list(d.get("supplementary_queries", [])),
         )
 
     @property
@@ -259,7 +291,8 @@ class Outline:
         section_map: dict[str, list[str]] = {}
 
         # 全局查询
-        for q in self.supplementary_queries:
+        for sq in self.supplementary_queries:
+            q = sq.query if hasattr(sq, 'query') else str(sq)
             if q not in all_queries:
                 all_queries.append(q)
 
@@ -267,6 +300,63 @@ class Outline:
         self._collect_section_queries(self.sections, all_queries, section_map)
 
         return all_queries, section_map
+
+    def collect_gap_queries_detailed(self) -> tuple[list[GapQuery], dict[str, list[GapQuery]]]:
+        """提取所有缺口查询（详细版，带来源策略和语言）
+
+        Returns:
+            (all_gap_queries, section_map)
+            - all_gap_queries: 去重后的 GapQuery 列表
+            - section_map: {section_id: [GapQuery]}
+        """
+        all_gap_queries: list[GapQuery] = []
+        seen_queries: set[str] = set()
+        section_map: dict[str, list[GapQuery]] = {}
+
+        # 全局查询
+        for sq in self.supplementary_queries:
+            if sq.query not in seen_queries:
+                seen_queries.add(sq.query)
+                gap = GapQuery(
+                    query=sq.query,
+                    target_sources=sq.target_sources,
+                    section_id="全局",
+                    section_title="全局",
+                    language="en",
+                )
+                all_gap_queries.append(gap)
+
+        # 逐章节收集（递归）
+        self._collect_section_gap_queries(self.sections, seen_queries, all_gap_queries, section_map)
+
+        return all_gap_queries, section_map
+
+    @staticmethod
+    def _collect_section_gap_queries(
+        sections: list[OutlineSection],
+        seen_queries: set[str],
+        all_gap_queries: list[GapQuery],
+        section_map: dict[str, list[GapQuery]],
+    ) -> None:
+        for sec in sections:
+            if sec.supplementary_queries:
+                gap_queries: list[GapQuery] = []
+                for sq in sec.supplementary_queries:
+                    if sq.query not in seen_queries:
+                        seen_queries.add(sq.query)
+                        gap = GapQuery(
+                            query=sq.query,
+                            target_sources=sq.target_sources,
+                            section_id=sec.id,
+                            section_title=sec.title,
+                            language="en",
+                        )
+                        all_gap_queries.append(gap)
+                        gap_queries.append(gap)
+                if gap_queries:
+                    section_map[sec.id] = gap_queries
+            if sec.child_sections:
+                Outline._collect_section_gap_queries(sec.child_sections, seen_queries, all_gap_queries, section_map)
 
     @staticmethod
     def _collect_section_queries(
@@ -276,8 +366,9 @@ class Outline:
     ) -> None:
         for sec in sections:
             if sec.supplementary_queries:
-                section_map[sec.id] = sec.supplementary_queries
-                for q in sec.supplementary_queries:
+                section_map[sec.id] = [(sq.query if hasattr(sq, 'query') else str(sq)) for sq in sec.supplementary_queries]
+                for sq in sec.supplementary_queries:
+                    q = sq.query if hasattr(sq, 'query') else str(sq)
                     if q not in all_queries:
                         all_queries.append(q)
             if sec.child_sections:
@@ -305,8 +396,12 @@ class Outline:
             lines.append(f"**缺漏概况**: {self.gap_summary}")
         if self.supplementary_queries:
             lines.append(f"**需要补搜**:")
-            for q in self.supplementary_queries:
-                lines.append(f"  - {q}")
+            for sq in self.supplementary_queries:
+                if hasattr(sq, 'query'):
+                    src_tag = f" [{', '.join(sq.target_sources)}]" if sq.target_sources else ""
+                    lines.append(f"  - {sq.query}{src_tag}")
+                else:
+                    lines.append(f"  - {sq}")
         lines.append("")
         for section in self.sections:
             lines.append(section.to_text())

@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -57,6 +58,25 @@ class Step(Enum):
 
 
 # ── App 状态 ──────────────────────────────────────────────────────
+@dataclass
+class SourceResult:
+    """单次检索源的执行结果"""
+    source: str           # 源名称：arxiv, github, etc.
+    query: str            # 实际执行的查询
+    papers_count: int     # 论文数量
+    resources_count: int  # 资源数量
+    error: str | None = None  # 错误信息（如有）
+
+    def to_display(self) -> str:
+        if self.error:
+            return f"❌ {self.source}: {self.error}"
+        paper_str = f"{self.papers_count}篇论文" if self.papers_count > 0 else ""
+        resource_str = f"{self.resources_count}个资源" if self.resources_count > 0 else ""
+        parts = [p for p in [paper_str, resource_str] if p]
+        detail = ", ".join(parts) if parts else "0结果"
+        return f"✅ 从 {self.source} 找到了 {detail}"
+
+
 class AppState:
     step: Step = Step.IDLE
     topic: str = ""
@@ -68,6 +88,11 @@ class AppState:
     report_lines: list[str] = []
     outline_text: str = ""
     logs: list[str] = []
+    
+    # 新增：按源的检索结果
+    source_results: list[SourceResult] = field(default_factory=list)
+    # 补搜结果
+    supplement_results: list[SourceResult] = field(default_factory=list)
 
     def reset(self) -> None:
         self.step = Step.IDLE
@@ -78,6 +103,8 @@ class AppState:
         self.report_lines = []
         self.outline_text = ""
         self.logs = []
+        self.source_results = []
+        self.supplement_results = []
 
 
 state = AppState()
@@ -192,6 +219,24 @@ def build_main() -> Group:
                 tbl.add_row(parts[0].strip(), parts[1].strip())
         panels.append(Panel(tbl, title="[策展报告]", border_style="magenta"))
 
+    # 显示每个源的检索结果（EXECUTE 阶段）
+    if state.source_results and state.step in (Step.EXECUTE, Step.CURATE, Step.OUTLINE, Step.DONE):
+        src_lines = [r.to_display() for r in state.source_results]
+        panels.append(Panel(
+            "\n".join(src_lines),
+            title="[各源检索结果]",
+            border_style="green",
+        ))
+
+    # 显示补搜结果（SUPPLEMENT 阶段）
+    if state.supplement_results and state.step in (Step.SUPPLEMENT, Step.DONE):
+        supp_lines = [r.to_display() for r in state.supplement_results]
+        panels.append(Panel(
+            "\n".join(supp_lines),
+            title="[补搜结果]",
+            border_style="blue",
+        ))
+
     if state.outline_text:
         panels.append(Panel(
             state.outline_text[:3000],
@@ -221,6 +266,61 @@ def refresh(layout: Layout) -> None:
     layout["header"].update(build_header())
     layout["main"].update(build_main())
     layout["logs"].update(build_logs())
+
+
+def _build_source_results(report) -> None:
+    """从报告结果中提取各源检索统计，存入 state.source_results"""
+    from collections import defaultdict
+    
+    source_counts: dict[str, dict] = defaultdict(lambda: {"papers": 0, "resources": 0})
+    
+    # 统计论文来源
+    for p in report.papers:
+        src = p.source or "unknown"
+        source_counts[src]["papers"] += 1
+    
+    # 统计资源来源
+    for r in report.resources:
+        src = r.source or "unknown"
+        source_counts[src]["resources"] += 1
+    
+    # 转换为 SourceResult 列表
+    state.source_results = []
+    for src, counts in sorted(source_counts.items()):
+        if counts["papers"] > 0 or counts["resources"] > 0:
+            state.source_results.append(SourceResult(
+                source=src,
+                query="",
+                papers_count=counts["papers"],
+                resources_count=counts["resources"],
+            ))
+
+
+def _build_supplement_results(supp_report) -> None:
+    """从补搜报告中提取各源检索统计，存入 state.supplement_results"""
+    from collections import defaultdict
+    
+    source_counts: dict[str, dict] = defaultdict(lambda: {"papers": 0, "resources": 0})
+    
+    # 遍历每个查询的结果报告
+    for query, sub_report in supp_report.result_map.items():
+        for p in sub_report.papers:
+            src = p.source or "unknown"
+            source_counts[src]["papers"] += 1
+        for r in sub_report.resources:
+            src = r.source or "unknown"
+            source_counts[src]["resources"] += 1
+    
+    # 转换为 SourceResult 列表
+    state.supplement_results = []
+    for src, counts in sorted(source_counts.items()):
+        if counts["papers"] > 0 or counts["resources"] > 0:
+            state.supplement_results.append(SourceResult(
+                source=src,
+                query="",
+                papers_count=counts["papers"],
+                resources_count=counts["resources"],
+            ))
 
 
 # ── 工作流 ─────────────────────────────────────────────────────────
@@ -278,6 +378,9 @@ async def run_workflow(topic: str, llm_api_key: Optional[str] = None) -> None:
         manager = RetrieverManager()
         # run() 是同步入口，内部管理事件循环
         report = await manager.execute_plan(plan, routing_mode="target_sources")
+        
+        # 统计各源结果（用于显示"从xxx找到了N个资源"）
+        _build_source_results(report)
     except Exception as e:
         logging.error(f"检索执行失败: {e}")
         state.step_detail = f"❌ 检索失败：{e}"
@@ -367,17 +470,36 @@ async def run_workflow(topic: str, llm_api_key: Optional[str] = None) -> None:
     # ── Step 5: Supplement (if needed) ─────────────────────────────
     if outline.needs_supplement:
         state.step = Step.SUPPLEMENT
-        gap_queries, section_map = outline.collect_gap_queries()
-        state.step_detail = f"需要补搜 {len(gap_queries)} 条查询…"
+        
+        # 使用详细版接口获取带源策略的补搜查询
+        all_gap_queries, section_map_detailed = outline.collect_gap_queries_detailed()
+        
+        # 格式化补搜计划用于显示
+        gap_plan_lines = [f"[bold]补搜计划（共 {len(all_gap_queries)} 条查询）[/bold]"]
+        for sec_id, sec_gap_queries in section_map_detailed.items():
+            sec_title = sec_gap_queries[0].section_title if sec_gap_queries else ""
+            gap_plan_lines.append(f"  [bold]{sec_id}[/bold] {sec_title}:")
+            for gq in sec_gap_queries:
+                srcs = ', '.join(gq.target_sources) if gq.target_sources else '全源'
+                gap_plan_lines.append(f"    • {gq.query} → {srcs}")
+        state.outline_text = "\n".join(gap_plan_lines)
+        
+        state.step_detail = f"需要补搜 {len(all_gap_queries)} 条查询…"
         refresh(_layout)
 
         try:
-            supp_report = await manager.supplementary_search(gap_queries, report, section_map)
+            supp_report = await manager.supplementary_search_detailed(
+                all_gap_queries, report, section_map_detailed
+            )
             state.report_lines.extend([
                 f"补搜新增论文 | {supp_report.total_new_papers}",
                 f"补搜新增资源 | {supp_report.total_new_resources}",
                 f"补搜耗时 | {supp_report.duration_seconds:.1f}秒",
             ])
+            
+            # 统计补搜各源结果
+            _build_supplement_results(supp_report)
+            refresh(_layout)  # 立即刷新显示补搜结果
         except Exception as e:
             logging.error(f"补搜失败: {e}")
 

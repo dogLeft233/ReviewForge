@@ -260,7 +260,7 @@ class TestSchemas:
         assert s.title == "批处理框架演进"
         assert s.level == 2
         assert s.coverage_status == "partial"
-        assert s.supplementary_queries == ["MapReduce原始论文"]
+        assert s.supplementary_queries == [SupplementaryQuery(query="MapReduce原始论文")]
         assert len(s.child_sections) == 1
         assert s.child_sections[0].id == "2.1.1"
         assert s.child_sections[0].coverage_status == "insufficient"

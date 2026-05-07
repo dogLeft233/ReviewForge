@@ -530,6 +530,102 @@ class RetrieverManager:
             duration_seconds=duration,
         )
 
+    async def supplementary_search_detailed(
+        self,
+        gap_queries: list["GapQuery"],
+        existing_report: CurationReport | None = None,
+        section_query_map: dict[str, list["GapQuery"]] | None = None,
+        max_results: int | None = None,
+    ) -> SuppleReport:
+        """补搜详细版——每个 GapQuery 可指定目标源，实现精准路由
+
+        Args:
+            gap_queries: GapQuery 列表（含 query / target_sources / section_id）
+            existing_report: 已有的检索结果（用于去重）
+            section_query_map: {section_id: [GapQuery]} 标记每个查询来自哪个章节
+            max_results: 每个查询的最大结果数
+        """
+        from src.planner.schemas import QuerySpec, RetrievalPlan
+
+        start = time.time()
+        unique_gap_queries = []
+        seen = set()
+        for gq in gap_queries:
+            if gq.query not in seen:
+                seen.add(gq.query)
+                unique_gap_queries.append(gq)
+
+        # 已有论文标题（用于去重）
+        existing_titles: set[str] = set()
+        if existing_report:
+            for p in existing_report.papers:
+                if p.title:
+                    existing_titles.add(p.title.lower().strip())
+
+        result_map: dict[str, CurationReport] = {}
+        total_new_papers = 0
+        total_new_resources = 0
+        new_classics = 0
+        new_frontiers = 0
+
+        # 为每个 gap query 构建 plan 并路由到指定源
+        async def search_one(gq: "GapQuery") -> tuple[str, CurationReport]:
+            # 如果有指定源，用 target_sources；否则用 embedding 路由
+            if gq.target_sources:
+                spec = QuerySpec(query=gq.query, target_sources=gq.target_sources)
+                plan = RetrievalPlan(topic=gq.query, queries=[spec])
+                report = await self.execute_plan(plan, routing_mode="target_sources")
+            else:
+                report = await self.search_all(gq.query, max_results)
+            return gq.query, report
+
+        results = await asyncio.gather(
+            *[search_one(gq) for gq in unique_gap_queries],
+            return_exceptions=True,
+        )
+
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            q, report = result
+            result_map[q] = report
+
+            for p in report.papers:
+                key = p.title.lower().strip() if p.title else ""
+                if key and key not in existing_titles:
+                    total_new_papers += 1
+                    existing_titles.add(key)
+                    if p.citation_count > 50:
+                        new_classics += 1
+                    if p.year >= 2023:
+                        new_frontiers += 1
+            total_new_resources += len(report.resources)
+
+        # 构建章节映射
+        sections_improved: list[str] = []
+        gap_mapping: dict[str, list[str]] = {}
+        if section_query_map:
+            for sec_id, gqueries in section_query_map.items():
+                q_list = [gq.query for gq in gqueries if gq.query in result_map]
+                if q_list:
+                    gap_mapping[sec_id] = q_list
+                    sections_improved.append(sec_id)
+
+        duration = time.time() - start
+
+        return SuppleReport(
+            topic=existing_report.topic if existing_report else "补搜",
+            queries_executed=[gq.query for gq in unique_gap_queries],
+            result_map=result_map,
+            total_new_papers=total_new_papers,
+            total_new_resources=total_new_resources,
+            new_classics=new_classics,
+            new_frontiers=new_frontiers,
+            sections_improved=sections_improved,
+            gap_queries=gap_mapping,
+            duration_seconds=duration,
+        )
+
     def close(self) -> None:
         if self._client and not self._client.is_closed:
             asyncio.create_task(self._client.aclose())

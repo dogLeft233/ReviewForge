@@ -9,20 +9,20 @@ from pathlib import Path
 class Settings:
     """所有可配置项，统一管理"""
 
-    # ── Semantic Scholar ──
+    # ── 检索器 API Keys ──
+    bocha_api_key: str = field(
+        default_factory=lambda: environ.get("BOCHA_API_KEY", ""),
+    )
     semantic_scholar_api_key: str = field(
-        default_factory=lambda: environ.get("S2_API_KEY", "")
+        default_factory=lambda: environ.get("S2_API_KEY", ""),
     )
-
-    # ── GitHub ──
     github_token: str = field(
-        default_factory=lambda: environ.get("GITHUB_TOKEN", "")
+        default_factory=lambda: environ.get("GITHUB_TOKEN", ""),
     )
-
-    # ── Google Serper ──
     serper_api_key: str = field(
-        default_factory=lambda: environ.get("SERPER_API_KEY", "")
+        default_factory=lambda: environ.get("SERPER_API_KEY", ""),
     )
+    # Wikipedia 不需要 API Key（免费）
 
     # ── 重试 ──
     max_retries: int = 3

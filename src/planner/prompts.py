@@ -339,11 +339,17 @@ GENERATE_OUTLINE_V1 = """你是一个学术综述细纲生成与覆盖评估专�
 
 ## 输出要求
 输出严格的 JSON 对象（不要添加任何解释文字），格式如下：
+
+**重要规则**：
+- supplementary_queries 必须使用英文关键词，因为学术检索源（arxiv、semantic_scholar、dblp等）以英文文献为主，中文查询几乎无法检索到结果
+- 每个 supplementary_query 可指定 target_sources 列表（可选值：arxiv, semantic_scholar, dblp, github, huggingface, hackernews, serper），引导补搜优先检索指定源
 {{
     "abstract": "摘要草稿（2-3句话概括综述内容和结论）",
     "overall_coverage": 0.7,
     "gap_summary": "整体缺漏概况",
-    "supplementary_queries": ["全局补搜关键词"],
+    "supplementary_queries": [
+        {{"query": "English search keywords", "target_sources": ["arxiv", "semantic_scholar"]}}
+    ],
     "sections": [
         {{
             "id": "1",
@@ -353,7 +359,9 @@ GENERATE_OUTLINE_V1 = """你是一个学术综述细纲生成与覆盖评估专�
             "evidence_required": ["需要的证据类型，如经典文献、前沿论文、开源项目等"],
             "coverage_status": "sufficient|partial|insufficient|unknown",
             "coverage_rationale": "为什么这个状态，具体缺漏什么",
-            "supplementary_queries": ["针对该节的补搜关键词"],
+            "supplementary_queries": [
+                {{"query": "English search keywords for this gap", "target_sources": ["arxiv"]}}
+            ],
             "child_sections": [
                 {{
                     "id": "1.1",
@@ -363,7 +371,7 @@ GENERATE_OUTLINE_V1 = """你是一个学术综述细纲生成与覆盖评估专�
                     "evidence_required": [],
                     "coverage_status": "sufficient|partial|insufficient|unknown",
                     "coverage_rationale": "",
-                    "supplementary_queries": [],
+                    "supplementary_queries": [],  // same format as above
                     "child_sections": []
                 }}
             ]
