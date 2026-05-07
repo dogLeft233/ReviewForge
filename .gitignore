@@ -36,3 +36,4 @@ plan_fix.py
 # Documentation (local only)
 docs/
 OVERVIEW.md
+.llm_cache/
