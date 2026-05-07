@@ -1,9 +1,12 @@
 """URL 去重 + 标题模糊去重"""
 
+import logging
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
 from src.searcher.result import SearchResult
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_url(url: str) -> str:
@@ -61,6 +64,8 @@ def deduplicate(results: list[SearchResult], title_threshold: float = 0.85) -> l
     if not results:
         return []
 
+    logger.debug("去重开始，输入 %d 条结果", len(results))
+
     output: list[SearchResult] = []
     seen_urls: dict[str, SearchResult] = {}
 
@@ -73,4 +78,5 @@ def deduplicate(results: list[SearchResult], title_threshold: float = 0.85) -> l
             # URL normalized to same — skip duplicate
             pass
 
+    logger.debug("去重完成，输出 %d 条结果（去除 %d 条重复）", len(output), len(results) - len(output))
     return output

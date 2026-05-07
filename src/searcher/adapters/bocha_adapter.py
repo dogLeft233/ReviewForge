@@ -1,8 +1,11 @@
 """BochaAdapter — BochaRetriever → SearchResult"""
 
+import logging
 from typing import TYPE_CHECKING
 
 from src.retrievers.bocha import BochaRetriever
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.searcher.result import SearchResult
@@ -18,10 +21,11 @@ class BochaAdapter:
         self._retriever = BochaRetriever()
 
     async def search(self, query: str, max_results: int = 10) -> list["SearchResult"]:
+        logger.info("[%s] 检索中: '%s' (max=%d)", self.name, query, max_results)
         from src.searcher.result import SearchResult
 
         cards = self._retriever.search(query, max_results=max_results)
-        return [
+        results = [
             SearchResult(
                 title=c.title,
                 url=c.url,
@@ -33,3 +37,5 @@ class BochaAdapter:
             )
             for c in cards
         ]
+        logger.debug("[%s] 返回 %d 条结果", self.name, len(results))
+        return results

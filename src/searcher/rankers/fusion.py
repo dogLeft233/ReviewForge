@@ -1,8 +1,11 @@
 """RRF 融合算法 — Reciprocal Rank Fusion"""
 
+import logging
 from collections import defaultdict
 
 from src.searcher.result import SearchResult
+
+logger = logging.getLogger(__name__)
 
 
 def rrf_fusion(results_by_source: dict[str, list[SearchResult]], k: int = 60) -> list[SearchResult]:
@@ -19,6 +22,7 @@ def rrf_fusion(results_by_source: dict[str, list[SearchResult]], k: int = 60) ->
     url_to_result: dict[str, SearchResult] = {}
 
     for source, results in results_by_source.items():
+        logger.debug("RRF: source='%s', count=%d", source, len(results))
         for rank, result in enumerate(results, start=1):
             url = result.url
             rrf_score = 1 / (k + rank)
@@ -44,4 +48,5 @@ def rrf_fusion(results_by_source: dict[str, list[SearchResult]], k: int = 60) ->
                 domain=r.domain,
             )
         )
+    logger.debug("RRF: 融合完成，共 %d 条结果", len(fused))
     return fused

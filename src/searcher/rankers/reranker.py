@@ -1,11 +1,14 @@
 """SiliconFlow Rerank API 调用"""
 
+import logging
 import os
 from typing import Any
 
 import httpx
 
 from src.searcher.result import SearchResult
+
+logger = logging.getLogger(__name__)
 
 
 SILICONFLOW_RERANK_URL = "https://api.siliconflow.cn/v1/rerank"
@@ -31,11 +34,12 @@ def rerank(
         按 relevance_score 降序排列的 SearchResult 列表
     """
     if not results:
+        logger.debug("Rerank: 输入为空，跳过")
         return []
 
     key = api_key or os.environ.get("SILICONFLOW_API_KEY", "")
     if not key:
-        # 无 API Key 时降级为 RRF 结果
+        logger.debug("Rerank: 无 SILICONFLOW_API_KEY，降级为原始结果")
         return results
 
     headers = {
@@ -79,4 +83,5 @@ def rerank(
 
     except Exception as e:
         # Rerank 失败，降级为原始结果
+        logger.warning("Rerank API 失败: %s，降级为原始结果", e)
         return results

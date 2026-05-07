@@ -1,11 +1,14 @@
 """MetaSearcher 主协调器"""
 
 import asyncio
+import logging
 from typing import Any
 
 from src.searcher.adapters.router import AdapterRouter
 from src.searcher.result import SearchContext, SearchResult
 from src.searcher.rankers import rrf_fusion, deduplicate, rerank as do_rerank
+
+logger = logging.getLogger(__name__)
 
 
 class MetaSearcher:
@@ -17,10 +20,20 @@ class MetaSearcher:
     async def search(self, query: str, max_results: int = 10) -> SearchContext:
         """完整流程：并行检索 → RRF 融合 → 去重 → Rerank → 分类结果"""
 
+        logger.info("[Phase 1] 并行检索: query='%s', max_results=%d", query, max_results)
+
         # Phase 1: 并行检索
         papers_raw, resources_raw, news_raw = await self._parallel_search(query, max_results)
 
+        logger.debug(
+            "[Phase 1] 原始结果 — papers: %s, resources: %s, news: %s",
+            [len(r) for r in papers_raw],
+            [len(r) for r in resources_raw],
+            [len(r) for r in news_raw],
+        )
+
         # Phase 2: RRF 融合（分类内）
+        logger.info("[Phase 2] RRF 融合")
         papers_fused = rrf_fusion({
             src: results
             for src, results in [("arxiv", papers_raw[0] if len(papers_raw) > 0 else []), ("serper", papers_raw[1] if len(papers_raw) > 1 else [])]
@@ -37,15 +50,39 @@ class MetaSearcher:
             if results
         }) if news_raw else []
 
+        logger.debug(
+            "[Phase 2] 融合后 — papers: %d, resources: %d, news: %d",
+            len(papers_fused),
+            len(resources_fused),
+            len(news_fused),
+        )
+
         # Phase 3: 去重
+        logger.info("[Phase 3] URL 去重")
         papers_dedup = deduplicate(papers_fused)
         resources_dedup = deduplicate(resources_fused)
         news_dedup = deduplicate(news_fused)
 
+        logger.debug(
+            "[Phase 3] 去重后 — papers: %d, resources: %d, news: %d",
+            len(papers_dedup),
+            len(resources_dedup),
+            len(news_dedup),
+        )
+
         # Phase 4: Rerank（SiliconFlow API）
+        logger.info("[Phase 4] SiliconFlow Rerank")
         papers_reranked = do_rerank(query, papers_dedup)
         resources_reranked = do_rerank(query, resources_dedup)
         news_reranked = do_rerank(query, news_dedup)
+
+        logger.info(
+            "[Done] topic='%s' — papers: %d, resources: %d, news: %d",
+            query,
+            len(papers_reranked),
+            len(resources_reranked),
+            len(news_reranked),
+        )
 
         return SearchContext(
             topic=query,
