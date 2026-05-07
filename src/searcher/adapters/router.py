@@ -19,7 +19,7 @@ class AdapterRouter:
 
     # 固定映射：category → 适配器类型列表
     CATEGORY_ADAPTERS = {
-        "papers": ["ArxivAdapter", "SerperAdapter"],
+        "papers": ["ArxivAdapter", "SemanticScholarAdapter", "SerperAdapter"],
         "resources": ["GithubAdapter", "HuggingFaceAdapter"],
         "news": ["BochaAdapter", "HNAdapter"],
     }
@@ -40,6 +40,7 @@ class AdapterRouter:
     @staticmethod
     def _instantiate(name: str) -> "AdapterBase":
         from src.searcher.adapters.arxiv_adapter import ArxivAdapter
+        from src.searcher.adapters.semantic_scholar_adapter import SemanticScholarAdapter
         from src.searcher.adapters.serper_adapter import SerperAdapter
         from src.searcher.adapters.github_adapter import GithubAdapter
         from src.searcher.adapters.hf_adapter import HuggingFaceAdapter
@@ -48,6 +49,7 @@ class AdapterRouter:
 
         mapping = {
             "ArxivAdapter": ArxivAdapter,
+            "SemanticScholarAdapter": SemanticScholarAdapter,
             "SerperAdapter": SerperAdapter,
             "GithubAdapter": GithubAdapter,
             "HuggingFaceAdapter": HuggingFaceAdapter,

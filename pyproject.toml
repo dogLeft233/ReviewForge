@@ -9,6 +9,9 @@ dependencies = [
     "numpy>=1.24.0",
     "rich>=13.0.0",
     "pyyaml>=6.0",
+    "scikit-learn>=1.7.2",
+    "beautifulsoup4>=4.14.3",
+    "lxml>=6.1.0",
 ]
 
 [project.optional-dependencies]

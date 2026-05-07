@@ -4,8 +4,86 @@
 - QUERY_GENERATION_PROMPT: 生成各源优化查询 + Boost 策略
 - RERANK_QUERY_PROMPT: 为 SiliconFlow Rerank 生成优化查询
 
-注意：提示词中的 JSON 示例使用双大括号 {{}} 进行 .format() 转义。
+注意：JSON 示例部分会根据 topic 动态生成，避免示例锚定偏差。
 """
+
+from typing import Optional
+
+from src.searcher.models import DomainProfile
+
+
+def _extract_example_term(topic: str, domain_profile: Optional[DomainProfile] = None) -> str:
+    """从 topic 或 domain_profile 提取示例术语（用于动态 JSON 示例）
+
+    优先级：
+    1. domain_profile.core_concepts[0]（如果有）
+    2. topic 本身（短词）或前两个词（长词）
+    """
+    if domain_profile and domain_profile.core_concepts:
+        return domain_profile.core_concepts[0]
+    words = topic.split()
+    if len(words) <= 3:
+        return topic
+    return " ".join(words[:2])
+
+
+def _build_example_section(topic: str, domain_profile: Optional[DomainProfile] = None) -> str:
+    """基于 topic 动态生成 JSON 示例，避免示例锚定偏差
+
+    返回的字符串已包含实际的 { 和 }（不经过二次 format 转义）
+    """
+    term = _extract_example_term(topic, domain_profile)
+    return f'''{{
+  "topic_analysis": {{
+    "core_concepts": ["{term} theory", "{term} application"],
+    "related_fields": ["{term} related field", "adjacent field"],
+    "era_keywords": ["2024", "latest"],
+    "missing_papers_to_check": ["{term} seminal paper if any"]
+  }},
+  "queries": {{
+    "arxiv": [
+      {{"query": "all:{term} AND all:survey", "variant_type": "primary", "expected_count": 5}},
+      {{"query": "ti:{term}", "variant_type": "title", "expected_count": 3}},
+      {{"query": "au:KeyAuthor", "variant_type": "author", "expected_count": 2}}
+    ],
+    "github": [
+      {{"query": "{term} in:readme language:Python stars:>500", "variant_type": "primary", "expected_count": 5}},
+      {{"query": "topic:{term}", "variant_type": "topic", "expected_count": 3}}
+    ],
+    "serper": [
+      {{"query": "site:arxiv.org {term} survey 2024", "variant_type": "academic", "expected_count": 5}}
+    ],
+    "bocha": [
+      {{"query": "{term} 综述 2024", "variant_type": "chinese", "expected_count": 5}}
+    ],
+    "huggingface": [
+      {{"query": "{term}+model+inference", "variant_type": "primary", "expected_count": 5}}
+    ],
+    "hackernews": [
+      {{"query": "{term} points:>50", "variant_type": "primary", "expected_count": 5}}
+    ]
+  }},
+  "boost": {{
+    "classical_papers": [
+      {{
+        "arxivid": "YYMM.XXXXX",
+        "title": "{term} Foundational Paper",
+        "boost_factor": 1.5,
+        "reason": "奠基性工作"
+      }}
+    ],
+    "high_citation": {{
+      "threshold": 100,
+      "boost_factor": 1.2
+    }}
+  }},
+  "rerank_query": {{
+    "primary": "{term} approach survey foundation OR method",
+    "strategy": "SemanticExpansion",
+    "expected_effect": "提升相关性排名"
+  }}
+}}'''
+
 
 QUERY_GENERATION_PROMPT = """\
 You are an expert information retrieval consultant. Your task is to analyze the user's research topic and generate optimized search queries for multiple search sources, along with boost strategy for classic papers.
@@ -65,57 +143,11 @@ You are an expert information retrieval consultant. Your task is to analyze the 
 - Returns citation count (citationCount)
 
 ## OUTPUT FORMAT (Strict JSON)
+
+This is an example of the JSON structure. The values shown below are BASED ON THE ACTUAL TOPIC "{example_topic}" — adapt them to match the specific characteristics of the research topic:
+
 ```json
-{{
-  "topic_analysis": {{
-    "core_concepts": ["core concept 1", "core concept 2"],
-    "related_fields": ["related field 1", "related field 2"],
-    "era_keywords": ["2024", "latest"],
-    "missing_papers_to_check": ["paper title if any"]
-  }},
-  "queries": {{
-    "arxiv": [
-      {{"query": "all:transformer AND all:attention", "variant_type": "primary", "expected_count": 5}},
-      {{"query": "ti:transformer", "variant_type": "title", "expected_count": 3}},
-      {{"query": "au:Vaswani", "variant_type": "author", "expected_count": 2}}
-    ],
-    "github": [
-      {{"query": "transformer in:readme language:Python stars:>500", "variant_type": "primary", "expected_count": 5}},
-      {{"query": "topic:transformer", "variant_type": "topic", "expected_count": 3}}
-    ],
-    "serper": [
-      {{"query": "site:arxiv.org transformer survey 2024", "variant_type": "academic", "expected_count": 5}}
-    ],
-    "bocha": [
-      {{"query": "Transformer 注意力机制 综述 2024", "variant_type": "chinese", "expected_count": 5}}
-    ],
-    "huggingface": [
-      {{"query": "LLM+text+generation", "variant_type": "primary", "expected_count": 5}}
-    ],
-    "hackernews": [
-      {{"query": "transformer points:>50", "variant_type": "primary", "expected_count": 5}}
-    ]
-  }},
-  "boost": {{
-    "classical_papers": [
-      {{
-        "arxivid": "1706.03762",
-        "title": "Attention Is All You Need",
-        "boost_factor": 1.5,
-        "reason": "Transformer开山之作"
-      }}
-    ],
-    "high_citation": {{
-      "threshold": 100,
-      "boost_factor": 1.2
-    }}
-  }},
-  "rerank_query": {{
-    "primary": "transformer architecture attention mechanism OR \\"Attention Is All You Need\\"",
-    "strategy": "ClassicPaperInjection",
-    "expected_effect": "提升经典论文排名"
-  }}
-}}
+{example_section}
 ```
 
 ## CONSTRAINTS
@@ -206,11 +238,22 @@ Before generating the rerank query, analyze:
 """
 
 
-def build_query_generation_prompt(topic: str, domain_profile_text: str) -> str:
-    """构建查询生成的提示词"""
+def build_query_generation_prompt(
+    topic: str,
+    domain_profile_text: str,
+    domain_profile: Optional[DomainProfile] = None,
+) -> str:
+    """构建查询生成的提示词
+
+    使用动态 JSON 示例避免锚定偏差。domain_profile 可选传入以提取示例术语。
+    """
+    example_section = _build_example_section(topic, domain_profile=domain_profile)
+    example_topic = _extract_example_term(topic, domain_profile)
     return QUERY_GENERATION_PROMPT.format(
         topic=topic,
         domain_profile_text=domain_profile_text or "(No prior knowledge available — use general search)",
+        example_section=example_section,
+        example_topic=example_topic,
     )
 
 

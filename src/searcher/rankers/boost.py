@@ -71,7 +71,17 @@ def apply_boost(
             logger.debug("Boost: url=%s matched classical paper '%s', factor=%.2f",
                          r.url, paper.title, paper.boost_factor)
 
-        # 2. 覆盖加权（来自 Rerank 优化）
+        # 2. 高引用 Boost（基于 Semantic Scholar citation_count）
+        if c := getattr(r, "citation_count", 0):
+            if c >= boost_config.high_citation_threshold:
+                boost *= boost_config.high_citation_boost
+                logger.debug(
+                    "Boost: url=%s citation_count=%d >= %d, factor=%.2f",
+                    r.url, c, boost_config.high_citation_threshold,
+                    boost_config.high_citation_boost,
+                )
+
+        # 3. 覆盖加权（来自 Rerank 优化）
         if override and r.url in override:
             boost *= override[r.url]
             logger.debug("Boost: url=%s override factor=%.2f", r.url, override[r.url])

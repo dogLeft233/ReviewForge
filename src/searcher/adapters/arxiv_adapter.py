@@ -10,18 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 def _clean_arxiv_query(query: str) -> str:
-    """Clean LLM-generated arXiv query to something ArxivRetriever can use.
+    """Clean LLM-generated arXiv query.
 
-    The LLM generates queries like ``all:transformer AND all:attention cat:cs.LG&sortBy=relevance``
-    but ArxivRetriever.search() always wraps the entire query in ``all:`` and appends its own
-    ``&sortBy=...``. Field prefixes that would be doubled or are unsupported are stripped:
-    ``all:``, ``ti:``, ``abs:``, ``au:``, ``cat:``, ``co:``, ``submitter:``, ``comm:``.
-    ``&sortBy=...`` suffix is also removed (retriever adds its own).
+    The LLM generates queries like:
+    ``all:transformer AND all:attention cat:cs.LG&sortBy=relevance``
+
+    ArxivRetriever.search() no longer wraps in ``all:``, so field prefixes
+    are preserved. Only ``all:`` is stripped (it's the default field).
+    ``&sortBy=...`` suffix is removed (retriever adds its own).
     """
     # Remove &sortBy=... (retriever appends its own)
     query = re.sub(r"&sortBy=[^&\s]*", "", query, flags=re.IGNORECASE)
-    # Strip all arXiv field:value prefixes (retriever wraps in all: and doesn't support others)
-    query = re.sub(r"\b(?:all|ti|abs|au|co|cat|submitter|comm):", "", query, flags=re.IGNORECASE)
+    # Strip only ``all:`` prefix (redundant — default field)
+    query = re.sub(r"\ball:", "", query, flags=re.IGNORECASE)
     query = re.sub(r"\s+", " ", query).strip()
     return query
 

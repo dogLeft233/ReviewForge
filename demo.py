@@ -7,13 +7,15 @@ ReviewForge Searcher Demo
 用法:
     python demo.py "RAG"                        # 默认搜索
     python demo.py "LLM" --debug                # 开启 DEBUG 日志
-    python demo.py "transformer" --max 20        # 自定义结果数量
+    python demo.py "transformer" -p 20 -r 10 -N 5  # 自定义各分类数量
+    python demo.py "ASR" --explore               # 先探索领域再搜索
     python demo.py "diffusion model" --level info  # 设置日志级别
 
 环境变量（可选）:
     SILICONFLOW_API_KEY   - 硅基流动 API Key（默认使用内置额度）
     GITHUB_TOKEN          - GitHub Token（提升 GitHub 搜索限流）
     SERPER_API_KEY        - Serper API Key（开启 Google 搜索）
+    BOCHA_API_KEY         - Bocha API Key（开启中文网页搜索）
 """
 
 import argparse
@@ -86,22 +88,56 @@ def print_news(n, i):
         print(f"       └─ {snippet[:70]}")
 
 
-async def run(query: str, max_results: int, log_level: str):
+async def run(query: str, max_papers: int, max_resources: int, max_news: int, log_level: str, explore: bool = False):
     logger = setup_logger(log_level)
-    logger.debug(f"搜索启动: query={query!r}, max_results={max_results}")
+    logger.debug(f"搜索启动: query={query!r}, papers={max_papers} resources={max_resources} news={max_news}, explore={explore}")
 
-    profile = DomainProfile(
-        topic=query,
-        core_concepts=[query],
-        classical_papers=[],
-    )
+    # ─── 可选：Explorer 先探索领域 ────────────────────────
+    searcher_profile = None
+    if explore:
+        print(f"\n{'='*60}")
+        print(f"🔎 领域探索: {query}")
+        print(f"{'='*60}")
+        try:
+            from src.explorer.explorer import DomainExplorer
+
+            explorer = DomainExplorer(enable_llm=True)
+            explorer_profile = explorer.explore(query)
+
+            print(f"  核心概念: {', '.join(explorer_profile.core_concepts[:5])}")
+            print(f"  相关主题: {', '.join(explorer_profile.related_topics[:5])}")
+            if explorer_profile.key_terms:
+                print(f"  关键术语: {len(explorer_profile.key_terms)} 个")
+            print(f"  来源: {', '.join(explorer_profile.sources_used)}")
+            print()
+
+            # 转换为 searcher DomainProfile
+            searcher_profile = DomainProfile(
+                topic=explorer_profile.original_query,
+                core_concepts=explorer_profile.core_concepts,
+                related_fields=explorer_profile.related_topics,
+                search_hints=explorer_profile.hn_discussions,
+            )
+            logger.info("Explorer 完成，profile: core_concepts=%d, related=%d",
+                        len(searcher_profile.core_concepts), len(searcher_profile.related_fields))
+        except Exception as e:
+            logger.warning("Explorer 失败: %s，直接搜索", e)
+            searcher_profile = DomainProfile(topic=query, core_concepts=[query])
+    else:
+        searcher_profile = DomainProfile(topic=query, core_concepts=[query])
 
     print(f"\n{'='*60}")
     print(f"🔍 搜索: {query}")
     print(f"{'='*60}")
 
     searcher = MetaSearcher()
-    ctx = await searcher.search(query, domain_profile=profile, max_results=max_results)
+    ctx = await searcher.search(
+        query,
+        domain_profile=searcher_profile,
+        max_papers=max_papers,
+        max_resources=max_resources,
+        max_news=max_news,
+    )
 
     # ─── 论文 ──────────────────────────────────────────────
     print(f"\n📄 论文 ({len(ctx.papers)} 条)")
@@ -147,9 +183,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("query", nargs="?", default="RAG", help="搜索关键词（默认: RAG）")
-    parser.add_argument("--max", "-n", type=int, default=8, help="每个来源的最大结果数（默认: 8）")
+    parser.add_argument("--papers", "-p", type=int, default=30, help="论文最大数量（默认: 30）")
+    parser.add_argument("--resources", "-r", type=int, default=30, help="资源最大数量（默认: 30）")
+    parser.add_argument("--news", "-N", type=int, default=30, help="新闻最大数量（默认: 30）")
     parser.add_argument(
         "--debug", "-d", action="store_true", help="开启 DEBUG 日志（等同于 --level debug）"
+    )
+    parser.add_argument(
+        "--explore", "-e", action="store_true", help="先使用 Explorer 探索领域（增加领域先验知识）"
     )
     parser.add_argument(
         "--level",
@@ -161,7 +202,7 @@ def main():
     args = parser.parse_args()
 
     log_level = "debug" if args.debug else args.level
-    asyncio.run(run(args.query, args.max, log_level))
+    asyncio.run(run(args.query, args.papers, args.resources, args.news, log_level, explore=args.explore))
 
 
 if __name__ == "__main__":

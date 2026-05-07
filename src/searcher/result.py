@@ -16,6 +16,7 @@ class SearchResult:
     category: str = ""  # "papers" | "resources" | "news"
     published_date: str = ""
     domain: str = ""
+    citation_count: int = 0  # Semantic Scholar 引用数
 
     def __post_init__(self) -> None:
         if not self.domain and self.url:
@@ -33,6 +34,7 @@ class SearchResult:
             "category": self.category,
             "published_date": self.published_date,
             "domain": self.domain,
+            "citation_count": self.citation_count,
         }
 
 

@@ -102,7 +102,7 @@ class TestMetaSearcherSearch:
                 _mock_adapter("arxiv", "papers"),
             ]
             searcher = MetaSearcher()
-            ctx = await searcher.search("test query", max_results=5)
+            ctx = await searcher.search("test query", max_papers=5, max_resources=5, max_news=5)
             assert isinstance(ctx, SearchContext)
             assert ctx.topic == "test query"
             assert hasattr(ctx, "papers")
@@ -138,7 +138,7 @@ class TestMetaSearcherSearch:
             mock_instance = MockRouter.return_value
             mock_instance.route.return_value = []
             searcher = MetaSearcher()
-            ctx = await searcher.search("transformer", domain_profile=None, max_results=5)
+            ctx = await searcher.search("transformer", domain_profile=None, max_papers=5, max_resources=5, max_news=5)
             assert isinstance(ctx, SearchContext)
 
     @pytest.mark.asyncio
@@ -153,7 +153,7 @@ class TestMetaSearcherSearch:
             mock_instance = MockRouter.return_value
             mock_instance.route.return_value = []
             searcher = MetaSearcher()
-            ctx = await searcher.search("transformer", domain_profile=profile, max_results=5)
+            ctx = await searcher.search("transformer", domain_profile=profile, max_papers=5, max_resources=5, max_news=5)
             assert isinstance(ctx, SearchContext)
 
     @pytest.mark.asyncio
@@ -163,7 +163,7 @@ class TestMetaSearcherSearch:
             mock_instance = MockRouter.return_value
             mock_instance.route.return_value = [_mock_adapter("arxiv", "papers")]
             searcher = MetaSearcher()
-            ctx = await searcher.search("transformer", max_results=5)
+            ctx = await searcher.search("transformer", max_papers=5, max_resources=5, max_news=5)
             # Adapter 被调用，mock 返回 1 条
             assert isinstance(ctx.papers, list)
 
@@ -174,6 +174,6 @@ class TestMetaSearcherSearch:
             mock_instance = MockRouter.return_value
             mock_instance.route.return_value = []
             searcher = MetaSearcher()
-            ctx = await searcher.search("empty query", max_results=5)
+            ctx = await searcher.search("empty query", max_papers=5, max_resources=5, max_news=5)
             assert ctx.topic == "empty query"
             assert ctx.papers == []

@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +27,17 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.siliconflow.cn/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "THUDM/GLM-4-9B-0414")
 CACHE_DIR = Path(os.environ.get("LLM_CACHE_DIR", ".llm_cache"))
 CACHE_TTL_SECONDS = 3600  # 1 hour
+
+
+@dataclass
+class RerankResult:
+    """Rerank 查询优化结果"""
+    query: str
+    """优化后的 rerank 查询字符串"""
+    boost_override: dict[str, float] = field(default_factory=dict)
+    """URL → boost_factor 映射（仅对目标论文加权）"""
+    urls_to_boost: list[str] = field(default_factory=list)
+    """需要额外加权的 URL 列表"""
 
 
 def _call_llm(
@@ -66,16 +79,13 @@ def _parse_json(content: str) -> Optional[dict]:
     text = content.strip()
     # 去掉 markdown code fence：```json ... ```
     if text.startswith("```"):
-        # Find the closing fence
         first_fence = text.find("```")
         if first_fence >= 0:
-            # Content after opening ```
             rest = text[first_fence + 3:]
             close_fence = rest.find("```")
             if close_fence >= 0:
                 text = rest[:close_fence].strip()
             else:
-                # No closing fence found, try maxsplit approach
                 parts = text.split("```", 2)
                 if len(parts) >= 2:
                     text = parts[1].strip()
@@ -86,7 +96,6 @@ def _parse_json(content: str) -> Optional[dict]:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # 尝试找到第一个 { 开始的位置
         idx = text.find("{")
         if idx >= 0:
             try:
@@ -140,6 +149,26 @@ def _parse_rerank_query(data: dict) -> str:
     if isinstance(rq, dict):
         return rq.get("primary", "")
     return str(rq)
+
+
+def _parse_rerank_result(data: dict) -> RerankResult:
+    """从 Rerank LLM 响应中解析 query + boost_hint"""
+    query = _parse_rerank_query(data)
+
+    boost_hint = data.get("boost_hint", {})
+    boost_override: dict[str, float] = {}
+    urls: list[str] = []
+    if isinstance(boost_hint, dict):
+        urls = boost_hint.get("urls_to_boost", [])
+        raw_factors = boost_hint.get("boost_factors", {})
+        if isinstance(raw_factors, dict):
+            for url, factor in raw_factors.items():
+                try:
+                    boost_override[url] = float(factor)
+                except (ValueError, TypeError):
+                    pass
+
+    return RerankResult(query=query, boost_override=boost_override, urls_to_boost=urls)
 
 
 def _config_to_cache(cfg: QueryConfig) -> dict:
@@ -223,6 +252,20 @@ class LLMQueryGenerator:
         path = self._cache_path(topic)
         if not path.exists():
             return None
+        # ── TTL 失效检测 ──────────────────────────────────
+        try:
+            mtime = path.stat().st_mtime
+            age = time.time() - mtime
+            if age > CACHE_TTL_SECONDS:
+                logger.info(
+                    "Cache expired for topic='%s' (age=%.0fs > TTL=%ds)",
+                    topic, age, CACHE_TTL_SECONDS,
+                )
+                path.unlink()
+                return None
+        except OSError:
+            pass
+        # ── 读取缓存 ───────────────────────────────────────
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -260,21 +303,17 @@ class LLMQueryGenerator:
 
         失败时降级为简单查询。
         """
-        # 1. 检查内存缓存
         if topic in self._cache:
             logger.info("Memory cache hit for topic='%s'", topic)
             return self._cache[topic]
 
-        # 2. 检查磁盘缓存
         cached = self._read_cache(topic)
         if cached is not None:
             self._cache[topic] = cached
             return cached
 
-        # 3. 调用 LLM
         logger.info("LLM generating queries for topic='%s' (model=%s)", topic, self._model)
-
-        prompt = build_query_generation_prompt(topic, domain_profile.to_text())
+        prompt = build_query_generation_prompt(topic, domain_profile.to_text(), domain_profile=domain_profile)
         content = _call_llm(prompt, model=self._model)
 
         if content is None:
@@ -303,7 +342,6 @@ class LLMQueryGenerator:
             rerank_query=rerank_query or topic,
         )
 
-        # 4. 写入缓存
         self._cache[topic] = cfg
         self._write_cache(cfg)
 
@@ -315,8 +353,12 @@ class LLMQueryGenerator:
         original_query: str,
         results_preview: str,
         domain_profile: DomainProfile,
-    ) -> str:
-        """为 SiliconFlow Rerank 生成优化查询字符串（无缓存，简单逻辑）"""
+    ) -> RerankResult:
+        """为 SiliconFlow Rerank 生成优化查询 + Boost Hint
+
+        Returns:
+            RerankResult: 优化后的查询字符串 + 额外加权建议
+        """
         classical_text = "\n".join(
             f"- {p.title} ({p.arxivid})" for p in domain_profile.classical_papers
         ) or "(No classic papers)"
@@ -325,11 +367,10 @@ class LLMQueryGenerator:
         content = _call_llm(prompt, model=self._model)
 
         if content is None:
-            return original_query
+            return RerankResult(query=original_query)
 
         data = _parse_json(content)
         if data is None:
-            return original_query
+            return RerankResult(query=original_query)
 
-        result = _parse_rerank_query(data)
-        return result if result else original_query
+        return _parse_rerank_result(data)

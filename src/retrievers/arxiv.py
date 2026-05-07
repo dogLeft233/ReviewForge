@@ -25,7 +25,7 @@ class ArxivRetriever(BaseRetriever):
         if max_results is None:
             max_results = 30
 
-        params = f"search_query=all:{quote(query)}&start=0&max_results={max_results}&sortBy=relevance"
+        params = f"search_query={quote(query)}&start=0&max_results={max_results}&sortBy=relevance"
         url = f"{ARXIV_API}?{params}"
 
         logger.info("arxiv: searching '%s' (max=%d)", query, max_results)
