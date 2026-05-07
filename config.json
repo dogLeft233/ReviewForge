@@ -1,0 +1,28 @@
+{
+  "bocha_api_key": "",
+  "semantic_scholar_api_key": "",
+  "github_token": "",
+  "serper_api_key": "",
+  "huggingface_token": "",
+
+  "max_retries": 3,
+  "retry_delay_seconds": 2.0,
+  "default_max_results": 50,
+  "request_timeout_seconds": 30.0,
+
+  "cache_dir": "~/.reviewforge/cache",
+  "cache_ttl_hours": 24,
+  "output_dir": "~/.reviewforge/output",
+
+  "llm_api_key": "",
+  "llm_base_url": "https://api.siliconflow.cn/v1",
+  "llm_model": "Qwen/Qwen3-8B",
+  "llm_temperature": 0.1,
+  "llm_max_tokens": 2000,
+  "llm_timeout_seconds": 120.0,
+  "llm_max_retries": 2,
+
+  "embedding_model": "BAAI/bge-m3",
+  "embedding_dimensions": 1024,
+  "embedding_batch_size": 32
+}

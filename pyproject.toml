@@ -1,0 +1,15 @@
+[project]
+name = "reviewforge"
+version = "0.1.0"
+description = "ReviewForge — AI-powered literature review"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = []
