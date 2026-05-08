@@ -1,24 +1,25 @@
-"""BFS 论文搜索器 — 仿 PaSa 架构，嵌入模型做相关性过滤
+"""BFS 论文搜索器 — 仿 PaSa 架构，支持 reranker 或 embedding 相似度过滤
 
 核心流程（双阶段 BFS）：
-  Stage 1 (search):  用 LLM 生成多个搜索词 → 并行搜索 → 嵌入相似度过滤 → papers_queue
-  Stage 2 (expand):  对每篇论文查引用关系 → 嵌入相似度过滤 → 推入下一层 papers_queue
+  Stage 1 (search):  用 LLM 生成多个搜索词 → 并行搜索 → reranker/embedding 过滤 → papers_queue
+  Stage 2 (expand):  对每篇论文查引用关系 → reranker/embedding 过滤 → 推入下一层 papers_queue
 
-过滤机制：嵌入模型编码 query + abstract → cosine similarity >= 0.50 才纳入
+过滤机制：
+  - reranker 模式：重排序后取 top_n（优先）
+  - embedding 模式：cosine similarity >= 0.50 才纳入
 
 用法:
     from src.seacher.bfs_search import BFSSearcher
     from src.llm import LLM
     from src.embedding import EmbeddingClient
+    from src.reranker import RerankerClient
 
     llm = LLM(api_key="...", model="Qwen/Qwen3-8B")
     embed = EmbeddingClient()
-    searcher = BFSSearcher(llm=llm, embed=embed)
+    reranker = RerankerClient()          # 优先使用 reranker
+    searcher = BFSSearcher(llm=llm, embed=embed, reranker=reranker)
 
-    # 单次搜索
     results = searcher.search("LoRA 大模型微调")
-
-    # BFS 引文扩展（depth=1/2）
     results = searcher.search("扩散模型图像生成", expand_layers=2)
 """
 
@@ -70,7 +71,7 @@ class PaperNode:
     paper_id: str        # arXiv ID（去重 key）
     abstract: str = ""
     depth: int = 0      # BFS 层级（root=0，引用=1，引用-of引用=2...）
-    select_score: float = 0.0  # 嵌入相似度分数
+    select_score: float = 0.0  # 评分（reranker score 或 embedding cosine）
     child: dict[str, list["PaperNode"]] = field(default_factory=dict)  # section →子论文
     source: str = ""     # 来源描述
     cited_by: list["PaperNode"] = field(default_factory=list)  # 该论文的参考文献
@@ -85,42 +86,50 @@ class PaperNode:
 
 
 class BFSSearcher:
-    """BFS 论文搜索引擎（PaSa 风格，嵌入模型替代 LLM 分类器）
+    """BFS 论文搜索引擎（PaSa 风格，reranker 替代 embedding 做相关性过滤）
 
     Attributes:
         llm: LLM 实例（用于生成搜索词）
-        embed: 嵌入模型客户端（用于计算相似度）
+        embed: 嵌入模型客户端（reranker 未提供时用于 cosine 过滤）
+        reranker: 重排序客户端（优先；reranker 未提供则降级到 embedding）
         search_queries_count: 每轮生成多少个搜索词
         search_papers_count: 每个搜索词取多少篇论文
         expand_papers_count: 每层最多扩展多少篇论文
         expand_layers: BFS 最大层数
-        similarity_threshold: 相似度过滤阈值
+        similarity_threshold: 相似度过滤阈值（embedding 模式专用）
+        rerank_top_n: 重排序后保留前 n 条（reranker 模式，None=全部）
     """
 
     def __init__(
         self,
         llm: Any,
         embed: Any,
+        reranker: Any = None,
         *,
         search_queries_count: int = DEFAULT_SEARCH_QUERIES,
         search_papers_count: int = DEFAULT_SEARCH_PAPERS,
         expand_papers_count: int = DEFAULT_EXPAND_PAPERS,
         expand_layers: int = DEFAULT_EXPAND_LAYERS,
         similarity_threshold: float = SIMILARITY_THRESHOLD,
+        rerank_top_n: int | None = 20,
         threads_num: int = DEFAULT_THREADS,
     ) -> None:
         self.llm = llm
         self.embed = embed
+        self.reranker = reranker
         self.search_queries_count = search_queries_count
         self.search_papers_count = search_papers_count
         self.expand_papers_count = expand_papers_count
         self.expand_layers = expand_layers
         self.similarity_threshold = similarity_threshold
+        self.rerank_top_n = rerank_top_n
         self.threads_num = threads_num
 
         logger.debug(
-            "BFSSearcher init: embed_model=%s threshold=%.2f layers=%d",
-            getattr(embed, "model", "?"), similarity_threshold, expand_layers,
+            "BFSSearcher init: embed=%s reranker=%s threshold=%.2f layers=%d",
+            getattr(embed, "model", "?"),
+            getattr(reranker, "model", "?") if reranker else None,
+            similarity_threshold, expand_layers,
         )
 
     # ── 主入口 ──────────────────────────────────────────────
@@ -222,10 +231,9 @@ class BFSSearcher:
         return all_papers
 
     def _search_one_query(self, sq: SearchQuery) -> list[PaperNode]:
-        """对单个搜索词执行：retriever 搜索 → 嵌入过滤"""
+        """对单个搜索词执行：retriever 搜索 → reranker/embedding 过滤"""
         from src.retrievers import ArxivRetriever
 
-        papers: list[PaperNode] = []
         try:
             with ArxivRetriever() as retriever:
                 results = retriever.search(sq.query, max_results=self.search_papers_count)
@@ -235,26 +243,57 @@ class BFSSearcher:
         if not results:
             return []
 
-        # 批量编码 abstracts
-        titles = [r.title for r in results]
-        abstracts = [r.abstract or "" for r in results]
-        query_vec = self.embed.encode(sq.query)
-        abstract_vecs = self.embed.encode_batch(abstracts)
+        if self.reranker:
+            return self._score_by_reranker_search(sq.query, results)
+        return self._score_by_embedding(sq.query, results)
 
-        for r, abstract_vec in zip(results, abstract_vecs):
+    def _score_by_reranker_search(
+        self, query: str, results: list[Any]
+    ) -> list[PaperNode]:
+        """用 reranker 对搜索结果打分，取 top_n"""
+        docs = [r.abstract or "" for r in results]
+        reranked = self.reranker.rerank(
+            query=query,
+            documents=docs,
+            top_n=self.rerank_top_n,
+            return_documents=True,
+        )
+        paper_map = {i: r for i, r in enumerate(results)}
+        nodes: list[PaperNode] = []
+        for r in reranked:
+            result = paper_map.get(r.index)
+            if not result:
+                continue
+            nodes.append(PaperNode(
+                title=result.title,
+                paper_id=result.url or "",
+                abstract=result.abstract or "",
+                depth=0,
+                select_score=r.relevance_score,
+                source=f"Search: {query}",
+            ))
+        return nodes
+
+    def _score_by_embedding(
+        self, query: str, results: list[Any]
+    ) -> list[PaperNode]:
+        """用 embedding cosine 相似度过滤"""
+        abstracts = [r.abstract or "" for r in results]
+        query_vec = self.embed.encode(query)
+        abstract_vecs = self.embed.encode_batch(abstracts)
+        nodes: list[PaperNode] = []
+        for result, abstract_vec in zip(results, abstract_vecs):
             score = self._cosine(query_vec, abstract_vec)
             if score >= self.similarity_threshold:
-                node = PaperNode(
-                    title=r.title,
-                    paper_id=r.url or "",   # arxiv retriever stores arxiv_id in url field
-                    abstract=r.abstract or "",
+                nodes.append(PaperNode(
+                    title=result.title,
+                    paper_id=result.url or "",
+                    abstract=result.abstract or "",
                     depth=0,
                     select_score=score,
-                    source=f"Search: {sq.query}",
-                )
-                papers.append(node)
-
-        return papers
+                    source=f"Search: {query}",
+                ))
+        return nodes
 
     # ── Stage 2: BFS 引文扩展 ────────────────────────────────
 
@@ -310,15 +349,14 @@ class BFSSearcher:
 
         实现策略（按优先级）:
         1. Semantic Scholar API — 真实引文关系图（优先，有 paper_id 时）
-        2. arXiv 文本搜索 — 标题 + "related work citations"（降级备用）
+        2. arXiv 文本搜索 — 标题 + "related work citations"（降级备用，
+           使用 reranker 或 embedding 过滤）
         """
         nodes: list[PaperNode] = []
         paper_id = paper.paper_id or ""
 
-
         # ── 策略 1：真实引文图（Semantic Scholar）─────────────
         if paper_id:
-            # paper_id 形如 "2301.00001"（无前缀），S2 API 需要 "arxiv:2301.00001"
             raw_id = _extract_arxiv_id(paper.paper_id) if paper.paper_id else ""
             s2_id = f"ArXiv:{raw_id}" if raw_id and not raw_id.startswith("ArXiv:") else raw_id
             try:
@@ -328,14 +366,13 @@ class BFSSearcher:
                     refs = s2.get_references(s2_id, max_results=10)
                 if refs:
                     for r in refs:
-                        # 取 arXiv ID 作为 dedup key
                         ref_arxiv = _extract_arxiv_id(r.url)
                         node = PaperNode(
                             title=r.title,
                             paper_id=ref_arxiv or r.url or r.title,
                             abstract=r.abstract or "",
                             depth=paper.depth + 1,
-                            select_score=0.0,  # 引文关系不依赖 embedding score
+                            select_score=0.0,  # 引文关系不依赖评分
                             source=f"Ref: [{paper.title[:30]}]",
                         )
                         nodes.append(node)
@@ -348,7 +385,6 @@ class BFSSearcher:
                 logger.debug(
                     "S2 引文查找失败 [%s]: %s，回退文本搜索", paper.title[:30], e
                 )
-
 
         # ── 策略 2：降级文本搜索（保持向后兼容）──────────────
         try:
@@ -366,27 +402,61 @@ class BFSSearcher:
         if not related:
             return []
 
-        # 批量编码 + 过滤
+        if self.reranker:
+            nodes = self._score_refs_by_reranker(paper, related)
+        else:
+            nodes = self._score_refs_by_embedding(paper, related)
+
+        time.sleep(3)
+        return nodes
+
+    def _score_refs_by_reranker(
+        self, paper: PaperNode, related: list[Any]
+    ) -> list[PaperNode]:
+        """用 reranker 打分参考文献"""
+        docs = [r.abstract or "" for r in related]
+        reranked = self.reranker.rerank(
+            query=paper.title,
+            documents=docs,
+            top_n=self.rerank_top_n,
+            return_documents=True,
+        )
+        paper_map = {i: r for i, r in enumerate(related)}
+        nodes: list[PaperNode] = []
+        for r in reranked:
+            result = paper_map.get(r.index)
+            if not result:
+                continue
+            ref_arxiv = _extract_arxiv_id(result.url)
+            nodes.append(PaperNode(
+                title=result.title,
+                paper_id=ref_arxiv or result.url or result.title,
+                abstract=result.abstract or "",
+                depth=paper.depth + 1,
+                select_score=r.relevance_score,
+                source=f"Ref: [{paper.title[:30]}]",
+            ))
+        return nodes
+
+    def _score_refs_by_embedding(
+        self, paper: PaperNode, related: list[Any]
+    ) -> list[PaperNode]:
+        """用 embedding cosine 相似度过滤参考文献"""
         abstracts = [r.abstract or "" for r in related]
         paper_vec = self.embed.encode(paper.title)
-
+        nodes: list[PaperNode] = []
         for r, abstract_vec in zip(related, self.embed.encode_batch(abstracts)):
             score = self._cosine(paper_vec, abstract_vec)
             if score >= self.similarity_threshold:
                 ref_arxiv = _extract_arxiv_id(r.url)
-                node = PaperNode(
+                nodes.append(PaperNode(
                     title=r.title,
                     paper_id=ref_arxiv or r.url or r.title,
                     abstract=r.abstract or "",
                     depth=paper.depth + 1,
                     select_score=score,
                     source=f"Ref: [{paper.title[:30]}]",
-                )
-                nodes.append(node)
-
-
-        # 控制速率（arXiv API honor system）
-        time.sleep(3)
+                ))
         return nodes
 
     # ── 工具方法 ──────────────────────────────────────────────
@@ -421,7 +491,6 @@ class BFSSearcher:
 
 
 # ── 工具函数 ──────────────────────────────────────────────────
-
 
 
 def _extract_arxiv_id(url: str) -> str:

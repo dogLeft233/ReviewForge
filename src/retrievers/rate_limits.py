@@ -37,7 +37,7 @@ class SourceRateLimit:
 
 SOURCE_RATE_LIMITS: dict[str, SourceRateLimit] = {
     "arxiv": SourceRateLimit(
-        min_interval_seconds=3.0,
+        min_interval_seconds=5.0,
         burst=1,
         requires_key=False,
         key_concurrency=2,
@@ -61,8 +61,8 @@ SOURCE_RATE_LIMITS: dict[str, SourceRateLimit] = {
         min_interval_seconds=1.0,
         burst=1,
         requires_key=False,
-        key_concurrency=5,
-        note="有 S2_API_KEY: free tier 100 req/hour",
+        key_concurrency=3,
+        note="无 key: 1000 req/s 共享（生产限速）；有 S2_API_KEY: 1 RPS intro tier；申请进阶 key 可达 10 RPS+",
     ),
     "dblp": SourceRateLimit(
         min_interval_seconds=1.0,

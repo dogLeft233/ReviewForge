@@ -15,9 +15,11 @@
 from src.retrievers.arxiv import ArxivRetriever
 from src.retrievers.github import GithubRetriever
 from src.retrievers.huggingface import HuggingFaceRetriever
+from src.retrievers.semantic_scholar import SemanticScholarRetriever
 
 __all__ = [
     "ArxivRetriever",
     "GithubRetriever",
     "HuggingFaceRetriever",
+    "SemanticScholarRetriever",
 ]
