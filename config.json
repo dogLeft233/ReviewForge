@@ -23,6 +23,10 @@
   "llm_max_retries": 2,
 
   "embedding_model": "BAAI/bge-m3",
+  "embedding_base_url": "https://api.siliconflow.cn/v1",
   "embedding_dimensions": 1024,
+  "reranker_model": "BAAI/bge-reranker-v2-m3",
+  "reranker_base_url": "https://api.siliconflow.cn/v1",
+  "reranker_api_key": null,
   "embedding_batch_size": 32
 }

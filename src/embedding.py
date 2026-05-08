@@ -42,7 +42,11 @@ class EmbeddingClient:
                 "Set env var LLM_API_KEY or llm_api_key in config.json"
             )
 
-        self._base_url = (settings.llm_base_url or "https://api.siliconflow.cn/v1").rstrip("/")
+        self._base_url = (
+            settings.embedding_base_url
+            or settings.llm_base_url
+            or "https://api.siliconflow.cn/v1"
+        ).rstrip("/")
         self.model = settings.embedding_model
         self.dimensions = settings.embedding_dimensions
 
