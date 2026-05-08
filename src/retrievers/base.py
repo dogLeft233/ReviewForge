@@ -8,7 +8,7 @@ import httpx
 from src.config import settings
 from src.retrievers.exceptions import RateLimitError, AuthenticationError
 from src.models import PaperCard, ResourceCard
-from src.retrievers.rate_limits import RateLimiter, get_source_config
+from src.retrievers.rate_limits import RateLimiter, get_source_config, get_source_limiter
 
 import logging
 
@@ -32,9 +32,9 @@ class BaseRetriever(ABC):
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
         )
-        # 根据 name 自动匹配速率配置
-        config = get_source_config(self.name)
-        self._rate_limiter = RateLimiter(config.min_interval_seconds)
+        # 使用全局单例限速器（进程级共享，所有同名 source 共用同一把锁）
+        # 在 ThreadPoolExecutor 并发场景下，防止各自创建独立 RateLimiter 导致限流失效
+        self._rate_limiter = get_source_limiter(self.name)
         self._max_retries = settings.max_retries
         self._retry_delay = settings.retry_delay_seconds
 
@@ -82,9 +82,19 @@ class BaseRetriever(ABC):
                 case 200:
                     return resp
                 case 429:
-                    raise RateLimitError(
-                        f"{self.name}: rate limited (attempt {attempt})"
+                    logger.warning(
+                        "%s: 429 rate limited, retry %d after %.1fs",
+                        self.name, attempt, self._retry_delay * attempt,
                     )
+                    # 通知全局限速器进入惩罚期，防止后续并发请求继续撞墙
+                    self._rate_limiter.penalize(self._retry_delay * (attempt + 1))
+                    if attempt < self._max_retries:
+                        import time
+                        time.sleep(self._retry_delay * attempt)
+                    else:
+                        raise RateLimitError(
+                            f"{self.name}: rate limited (gave up after {self._max_retries} attempts)"
+                        )
                 case 403:
                     raise AuthenticationError(f"{self.name}: forbidden")
                 case _:

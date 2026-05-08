@@ -2,8 +2,12 @@
 
 import re
 import xml.etree.ElementTree as ET
+from typing import Any
 from urllib.parse import quote
 
+import httpx
+
+from src.config import settings
 from src.models import PaperCard
 from src.retrievers.base import BaseRetriever
 
@@ -57,6 +61,13 @@ class ArxivRetriever(BaseRetriever):
         url = f"{ARXIV_API}?{params}"
         resp = self._get(url)
         return self._parse(resp.text)
+
+    def _get(self, url: str, **kwargs: Any) -> httpx.Response:
+        """带重试+速率限制的 GET，arXiv 额外加 User-Agent 头"""
+        if settings.arxiv_email:
+            headers = kwargs.setdefault("headers", {})
+            headers["User-Agent"] = f"ReviewForge/1.0 (mailto:{settings.arxiv_email})"
+        return super()._get(url, **kwargs)
 
     # ── 解析 ──
 

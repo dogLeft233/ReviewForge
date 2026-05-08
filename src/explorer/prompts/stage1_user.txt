@@ -1,0 +1,7 @@
+请探索领域：**{topic}**
+
+先搜索该领域的概况，包括：
+- 搜索 `{topic} 是什么` 或 `{topic} overview`
+- 搜索 `{topic} core concepts introduction`
+
+然后基于搜索结果，撰写一份该领域的结构化概况文档。

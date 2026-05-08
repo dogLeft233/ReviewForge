@@ -149,6 +149,10 @@ class BFSSearcher:
             按 select_score 排序的 PaperNode 列表
         """
         layers = expand_layers if expand_layers is not None else self.expand_layers
+        logger.info("expand_layers config=%s → actual layers=%d (expand_papers_count=%d)",
+                    self.expand_layers, layers, self.expand_papers_count)
+        if layers > 0:
+            logger.info("BFS 扩展层数 depth in [0, %d]，expand_papers_count=%d", layers, self.expand_papers_count)
 
         # ── Stage 1: 生成搜索词 + 并行搜索 ──────────────────
         search_queries = self._generate_queries(question)
@@ -190,17 +194,36 @@ class BFSSearcher:
         )
 
         queries: list[SearchQuery] = []
+        seen: set[str] = set()
+        dropped: list[str] = []
         for line in reply.strip().splitlines():
             line = line.strip()
             if not line:
                 continue
             parts = line.split("|")
             if len(parts) >= 2 and parts[0] == "SEARCH":
-                queries.append(SearchQuery(query=parts[1].strip(), reason=parts[2].strip() if len(parts) > 2 else ""))
+                q = parts[1].strip()
+                reason = parts[2].strip() if len(parts) > 2 else ""
+                if q in seen:
+                    dropped.append(f"跳过（重复）: {line}")
+                else:
+                    seen.add(q)
+                    queries.append(SearchQuery(query=q, reason=reason))
             elif line.startswith("SEARCH|"):
                 # 兼容没有明确字段前缀的格式
                 rest = line[7:].strip()
-                queries.append(SearchQuery(query=rest, reason=""))
+                if rest in seen:
+                    dropped.append(f"跳过（重复）: {line}")
+                else:
+                    seen.add(rest)
+                    queries.append(SearchQuery(query=rest, reason=""))
+            else:
+                dropped.append(f"跳过（格式不符）: {line}")
+
+
+        for d in dropped:
+            logger.debug("query 丢弃: %s", d)
+        logger.info("Stage 1: 生成 %d/%d 个搜索词（丢弃 %d 个）", len(queries), len(queries), len(dropped))
 
         if not queries:
             # 保底：用原问题作搜索词

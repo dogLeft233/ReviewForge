@@ -37,6 +37,7 @@ _ENV_OVERRIDES: dict[str, str] = {
     "huggingface_token": "HF_TOKEN",
     "llm_api_key": "LLM_API_KEY",
     "reranker_api_key": "RERANKER_API_KEY",
+    "arxiv_email": "ARXIV_EMAIL",
 }
 
 

@@ -1,0 +1,9 @@
+请探索领域：**{topic}** 的前沿进展。
+
+搜索：
+- 搜索 `{topic} leaderboard benchmark`
+- 搜索 `{topic} state of the art 2024`
+- 搜索 `site:paperswithcode.com {topic}`
+- 搜索 `{topic} best results dataset`
+
+请务必找到权威 leaderboard 的 URL，以及当前最佳方法的数据。

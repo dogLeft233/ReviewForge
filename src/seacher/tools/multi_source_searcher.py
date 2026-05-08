@@ -214,7 +214,15 @@ SYSTEM_PROMPT_TEMPLATE = """你是一个研究助手，负责为用户问题生�
 2. 生成 2-4 个 GitHub 搜索词（覆盖不同角度：官方实现/高质量项目/最新活跃）
 3. 生成 2-4 个 HuggingFace 模型搜索词（任务类型/应用场景）
 4. 生成 1-2 个 HuggingFace 数据集搜索词
-5. 生成 1-3 个 arXiv 搜索词（精准主题/最新趋势）
+5. 生成 2-4 个 arXiv 搜索词（精准主题/最新趋势）
+
+## ⚠️ 特别强调：优先搜索 Survey / Review 论文
+- 每次搜索 arXiv 时，**必须包含至少 1 个专门找 survey/review 类论文的搜索词**，如：
+  - `arxiv ti:survey AND <主题>` （标题含 survey 的综述）
+  - `arxiv ti:review AND <主题>` （标题含 review）
+  - `arxiv "survey" abs:<主题>` （摘要中提到 survey 的）
+- Survey 论文是综述写作的骨架，必须优先覆盖
+- 其他 arXiv 搜索词负责覆盖细分方向的前沿论文
 
 ## 搜索规则
 - **最多生成 2 轮搜索指令**：第 1 轮生成全面覆盖的搜索词；收到结果后第 2 轮可细化/补充

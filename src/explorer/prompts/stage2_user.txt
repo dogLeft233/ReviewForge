@@ -1,0 +1,8 @@
+请探索领域：**{topic}** 的经典工作与历史发展阶段。
+
+搜索：
+- 搜索 `{topic} history evolution classic papers`
+- 搜索 `{topic} seminal work foundational`
+- 搜索 `{topic} survey review timeline`（找综述类论文了解历史全貌）
+
+基于搜索结果，整理该领域从古至今的经典论文列表和时间线。
