@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from src.retrievers.ar5iv import Ar5ivRetriever
+
 logger = logging.getLogger(__name__)
 
 
@@ -180,6 +182,7 @@ class LLM:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._tool_prompt = _build_tool_use_prompt()
+        self._ar5iv = Ar5ivRetriever()
 
         logger.debug("LLM init: model=%s base=%s", model, self._base_url)
 
@@ -206,6 +209,8 @@ class LLM:
         返回:
             模型回复文本
         """
+        t0 = time.perf_counter()
+
         effective_temp = temperature if temperature is not None else self._cfg.temperature
         effective_max_tokens = max_tokens if max_tokens is not None else self._cfg.max_tokens
 
@@ -217,12 +222,17 @@ class LLM:
 
         for attempt in range(1, self._cfg.max_retries + 1):
             try:
+                tt = time.perf_counter()
                 reply_text = self._send_request(
                     payload=payload,
                     url=response_url,
                     timeout=self._cfg.timeout_seconds,
                 )
-                logger.debug("LLM chat: attempt %d ok", attempt)
+                elapsed = time.perf_counter() - t0
+                logger.info(
+                    "[LLM] ✓ chat done in %.2fs (attempt %d, req %.0fms)",
+                    elapsed, attempt, (time.perf_counter() - tt) * 1000,
+                )
                 return reply_text
             except RateLimitError:
                 wait = 2.0 * attempt
@@ -312,6 +322,7 @@ class LLM:
         timeout: float,
     ) -> str:
         """实际发送请求，返回回复文本"""
+        tt = time.perf_counter()
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -320,6 +331,8 @@ class LLM:
 
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
             resp = client.post(url, json=payload, headers=headers)
+        req_ms = (time.perf_counter() - tt) * 1000
+        logger.debug("[LLM] HTTP round-trip %.0fms", req_ms)
 
         match resp.status_code:
             case 200:
@@ -344,3 +357,19 @@ class LLM:
 
     def __exit__(self, *args: Any) -> None:
         pass
+
+    # ── ar5iv 全文获取 ───────────────────────────────────────
+
+    def fetch_ar5iv_full_text(self, arxiv_id: str) -> str:
+        """获取指定 arXiv 论文的 HTML 全文（通过 ar5iv.org）
+
+        Args:
+            arxiv_id: 形如 "2301.00001" 或 "2301.00001v2"
+        Returns:
+            HTML 正文原始字符串
+        """
+        try:
+            return self._ar5iv.fetch_full_text(arxiv_id)
+        except Exception as e:
+            logger.warning("ar5iv fetch failed for %s: %s", arxiv_id, e)
+            return ""
