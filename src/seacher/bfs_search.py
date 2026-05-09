@@ -178,17 +178,21 @@ class BFSSearcher:
     def _generate_queries(self, question: str) -> list[SearchQuery]:
         """调用 LLM 生成多个搜索词描述（单轮，无工具调用）"""
         prompt = (
-            f"你是一名学术搜索研究员。根据研究问题，生成 {self.search_queries_count} 个搜索词/句，"
-            f"覆盖不同搜索角度（宽泛/精准/作者/分类/最新趋势）。\n\n"
-            f"研究问题：{question}\n\n"
-            f"输出格式（每行一个）：SEARCH|搜索词|搜索理由\n"
-            f"示例：\n"
-            f"SEARCH|ti:LoRA fine-tuning large language models|精准匹配 LoRA 在 LLM 场景|"
+            f"You are an academic search researcher. Generate {self.search_queries_count} search queries for arXiv, "
+            f"covering different angles (broad/precise/author/classification/latest trends).\n\n"
+            f"Research topic: {question}\n\n"
+            f"Output format (one per line): SEARCH|<English search query>|<English reason>\n"
+            f"Examples:\n"
+            f"SEARCH|ti:LoRA fine-tuning large language models|match LoRA in LLMs|\n"
+            f"SEARCH|attention mechanism transformer ASR end-to-end|precise match for ASR architectures|\n"
+            f"SEARCH|author:Geoffrey Hinton speech recognition neural networks|author authority|\n"
+            f"SEARCH|conversational AI automatic speech recognition 2024|latest trends|\n"
+            f"IMPORTANT: All search queries MUST be in English. Do NOT output Chinese queries."
         )
 
         reply = self.llm.chat(
             external_prompt=prompt,
-            system_prompt="你只需输出搜索词，不要解释。",
+            system_prompt="You are a researcher. Output ONLY the search lines, nothing else. Each line must start with SEARCH|.",
             temperature=0.3,
             max_tokens=500,
         )

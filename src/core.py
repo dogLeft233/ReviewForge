@@ -371,15 +371,10 @@ class ReviewForge:
     def _load_embed_client(self):
         """"懒加载 embedding 客户端"""
         try:
-            from src.seacher.tools.searcher_tools import get_embed_model
+            from src.embedding import EmbeddingClient
             from src.config import settings
 
-            return get_embed_model(
-                model=settings.embedding_model,
-                base_url=settings.embedding_base_url,
-                api_key=settings.reranker_api_key or settings.llm_api_key,
-                dim=settings.embedding_dimensions,
-            )
+            return EmbeddingClient()
         except Exception as e:
             logger.warning("Embedding 客户端初始化失败: %s", e)
             return None
@@ -387,13 +382,9 @@ class ReviewForge:
     def _load_reranker_client(self):
         """懒加载 reranker 客户端"""
         try:
-            from src.seacher.tools.searcher_tools import get_reranker_model
+            from src.reranker import RerankerClient
             from src.config import settings
-            return get_reranker_model(
-                model=settings.reranker_model,
-                base_url=settings.reranker_base_url,
-                api_key=settings.reranker_api_key or settings.llm_api_key,
-            )
+            return RerankerClient()
         except Exception as e:
             logger.warning("Reranker 客户端初始化失败: %s", e)
             return None

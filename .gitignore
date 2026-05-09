@@ -37,3 +37,6 @@ plan_fix.py
 docs/
 OVERVIEW.md
 .llm_cache/
+-e 
+# ReviewForge
+tmp/
