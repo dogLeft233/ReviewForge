@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,14 +30,7 @@ class SearcherAgent:
     verbose: bool = False
 
     def run(self, question: str) -> str:
-        """执行搜索关键词生成
-
-        参数:
-            question: 用户的研究问题
-
-        返回:
-            生成的 arXiv 搜索关键词建议
-        """
+        """执行搜索关键词生成（原始版，支持网页搜索）"""
         from .tools import search_arxiv_keywords
 
         if self.verbose:
@@ -47,7 +39,36 @@ class SearcherAgent:
         result = search_arxiv_keywords(question=question, llm=self.llm)
 
         if self.verbose:
-            logger.info("生成结果:\\n%s", result)
+            logger.info("生成结果:\n%s", result)
+
+        return result
+
+    def run_with_explorer_report(self, topic: str, er: Any) -> str:
+        """基于 Explorer 初步调查结果，继续生成搜索关键词（不强制调用网页搜索）
+
+        参数:
+            topic: 用户输入的要写综述的领域
+            er: ExplorerAgent 返回的初步调查结果（ExplorerReport）
+        """
+        from .tools import search_arxiv_keywords_with_explorer
+
+        if self.verbose:
+            logger.info(
+                "SearcherAgent [with ExplorerReport] 收到领域: %s, "
+                "stage1_overview=%s, stage2_classics=%d",
+                topic,
+                bool(er.stage1_overview),
+                len(er.stage2_classics) if er.stage2_classics else 0,
+            )
+
+        result = search_arxiv_keywords_with_explorer(
+            question=topic,
+            er=er,
+            llm=self.llm,
+        )
+
+        if self.verbose:
+            logger.info("生成结果:\n%s", result)
 
         return result
 

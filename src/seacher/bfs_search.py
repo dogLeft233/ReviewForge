@@ -38,7 +38,7 @@ DEFAULT_SEARCH_QUERIES = 5       # LLM 生成多少个搜索词
 DEFAULT_SEARCH_PAPERS = 20       # 每个搜索词取多少篇论文
 DEFAULT_EXPAND_PAPERS = 15       # 每层最多扩展多少篇论文
 DEFAULT_EXPAND_LAYERS = 2        # BFS 最大层数（0=只用搜索，1=搜索+一层引文）
-DEFAULT_THREADS = 20             # 并行线程数
+DEFAULT_THREADS = 1             # 并行线程数
 SIMILARITY_THRESHOLD = 0.50      # 嵌入相似度阈值
 
 # ── 异常 ─────────────────────────────────────────────────────

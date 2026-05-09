@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,41 +48,38 @@ class ExplorerAgent:
     max_chars_per_fetch: int = 4000
 
     def run(self, topic: str) -> ExplorerReport:
-        """执行完整三阶段探索"""
+        """执行完整三阶段探索（三阶段并发运行）"""
         report = ExplorerReport(topic=topic)
-        total_queries = 0
 
-        # Stage 1
-        logger.info("[Stage 1] 探索领域概况: %s", topic)
-        stage1_result = self._run_stage1(topic)
+        with ThreadPoolExecutor(max_workers=self.llm._cfg.max_concurrency) as pool:
+            f1 = pool.submit(self._run_stage1, topic)
+            f2 = pool.submit(self._run_stage2, topic)
+            f3 = pool.submit(self._run_stage3, topic)
+
+            stage1_result = f1.result()
+            stage2_result = f2.result()
+            stage3_result = f3.result()
+
         report.stage1_overview = stage1_result["overview"]
         report.stage1_concepts = stage1_result["concepts"]
         report.stage1_search_results = stage1_result["raw"]
-        total_queries += stage1_result["query_count"]
-
-        # Stage 2
-        logger.info("[Stage 2] 探索经典工作: %s", topic)
-        stage2_result = self._run_stage2(topic)
         report.stage2_classics = stage2_result["classics"]
         report.stage2_timeline = stage2_result["timeline"]
         report.stage2_search_results = stage2_result["raw"]
-        total_queries += stage2_result["query_count"]
-
-        # Stage 3
-        logger.info("[Stage 3] 探索前沿进展: %s", topic)
-        stage3_result = self._run_stage3(topic)
         report.stage3_benchmarks = stage3_result["benchmarks"]
         report.stage3_state_of_art = stage3_result["sota"]
         report.stage3_trends = stage3_result["trends"]
         report.stage3_search_results = stage3_result["raw"]
-        total_queries += stage3_result["query_count"]
+        report.total_queries = (
+            stage1_result["query_count"]
+            + stage2_result["query_count"]
+            + stage3_result["query_count"]
+        )
 
-        # Synthesis
         logger.info("[Synthesis] 生成下游报告")
         report.downstream_report = self._synthesize(topic, report)
-        report.total_queries = total_queries
 
-        logger.info("Explorer 完成！共执行 %d 次搜索", total_queries)
+        logger.info("Explorer 完成！共执行 %d 次搜索", report.total_queries)
         return report
 
     # ─────────────────────────────────────────────────────────────────────────

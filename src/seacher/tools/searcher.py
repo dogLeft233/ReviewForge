@@ -35,7 +35,6 @@ def _parse_tool_calls(text: str) -> list[tuple[str, str]]:
     # 格式 2：纯文本 tool_name("args")
     if not results:
         pattern2 = re.compile(r'\b(\w+)\s*\(\s*"([^"]*)"\s*\)', re.DOTALL)
-        # 排除内置函数名
         for m in pattern2.finditer(text):
             name = m.group(1)
             if name not in ("print", "len", "str", "int", "float", "list", "dict", "tuple", "set"):
@@ -48,25 +47,19 @@ def _execute_tool(tool_name: str, args_str: str) -> str:
     """执行单个工具调用，返回结果文本"""
     import json
 
-    # 从 args_str 解析 kwargs（如 count=5）
     kwargs = {}
     if args_str:
         try:
-            # 尝试解析为 JSON（支持复杂参数）
             kwargs = json.loads("{" + args_str + "}")
         except Exception:
-            # 回退：把整个 args_str 当作 query
             kwargs = {"query": args_str}
 
     logger.info("执行工具: %s kwargs=%s", tool_name, kwargs)
 
-    # 延迟导入避免循环
     try:
         from searcher_tools import web_search, web_fetch
     except ImportError:
-        # 从包内导入
         from . import searcher_tools
-
         return searcher_tools.execute(tool_name, kwargs)
 
     if tool_name == "web_search":
@@ -86,7 +79,7 @@ def _format_search_results(results: list) -> str:
     if not results:
         return "（无搜索结果）"
     lines = []
-    for r in results[:5]:  # 最多取 5 条
+    for r in results[:5]:
         title = r.get("title", "")
         url = r.get("url", "")
         desc = r.get("description", "")
@@ -126,15 +119,12 @@ def search_arxiv_keywords(question: str, llm: Any, max_turns: int = 8) -> str:
 
     user_prompt = USER_PROMPT_TEMPLATE.format(user_question=question)
 
-    # 对话历史（用于多轮）
     messages = [Message(role="user", content=user_prompt)]
 
     logger.info("开始多轮搜索关键词生成，问题: %s", question[:50])
 
     for turn in range(1, max_turns + 1):
         logger.info("第 %d 轮对话", turn)
-
-        # 调用 LLM（带 system prompt）
         reply = llm.chat(
             external_prompt=SYSTEM_PROMPT,
             messages=messages,
@@ -142,14 +132,12 @@ def search_arxiv_keywords(question: str, llm: Any, max_turns: int = 8) -> str:
 
         logger.debug("LLM 回复长度: %d", len(reply))
 
-        # 检查是否还有工具调用
         tool_calls = _parse_tool_calls(reply)
         if not tool_calls:
             logger.info("LLM 已停止工具调用，最终结果得到")
             messages.append(Message(role="assistant", content=reply))
             return reply
 
-        # 有工具调用 → 追加 LLM 回复 + 执行工具 + 追加结果
         messages.append(Message(role="assistant", content=reply))
 
         for tool_name, args_str in tool_calls:
@@ -157,6 +145,79 @@ def search_arxiv_keywords(question: str, llm: Any, max_turns: int = 8) -> str:
             tool_result = _execute_tool(tool_name, args_str)
             messages.append(Message(role="user", content=f"[{tool_name} 返回结果]\n{tool_result}"))
 
-    # 超过最大轮数，返回最后一轮结果
+    logger.warning("达到最大轮数 %d，终止", max_turns)
+    return messages[-1].content if messages else ""
+
+
+def search_arxiv_keywords_with_explorer(
+    question: str,
+    er: Any,
+    llm: Any,
+    max_turns: int = 8,
+) -> str:
+    """基于 ExplorerAgent 初步调查结果，生成 arXiv 搜索关键词（不强制调用网页搜索）
+
+    流程：
+    1. 将 system_prompt + user_no_search_prompt（注入 explorer 数据）发送给 LLM
+    2. LLM 直接生成结果，无需调用 web_search/web_fetch
+
+    参数:
+        question: 用户的研究问题
+        er: ExplorerAgent 返回的 ExplorerReport
+        llm: LLM 实例（支持 chat 方法）
+        max_turns: 最大对话轮数（防止 LLM 自行调用搜索工具）
+
+    返回:
+        LLM 最终生成的关键词建议文本
+    """
+    from llm import Message
+    import seacher.prompts as prompts_mod
+    SYSTEM_PROMPT = prompts_mod.SYSTEM_PROMPT
+    USER_NO_SEARCH = prompts_mod.USER_PROMPT_NO_SEARCH
+
+    overview = (er.stage1_overview or er.stage1_search_results or "（无）")[:3000]
+    classics = "\n".join(
+        f"- {c.title} ({c.year})"
+        for c in (er.stage2_classics or [])[:15]
+    ) or "（无）"
+    concepts = "\n".join(er.stage1_concepts or []) if er.stage1_concepts else "（无）"
+
+    user_prompt = USER_NO_SEARCH.format(
+        user_question=question,
+        explorer_overview=overview,
+        explorer_classics=classics,
+        explorer_concepts=concepts,
+    )
+
+    messages = [Message(role="user", content=user_prompt)]
+    logger.info(
+        "开始无搜索版关键词生成，问题: %s，classics=%d",
+        question[:50],
+        len(er.stage2_classics) if er.stage2_classics else 0,
+    )
+
+    for turn in range(1, max_turns + 1):
+        logger.info("第 %d 轮对话", turn)
+
+        reply = llm.chat(
+            external_prompt=SYSTEM_PROMPT,
+            messages=messages,
+        )
+
+        tool_calls = _parse_tool_calls(reply)
+        if not tool_calls:
+            messages.append(Message(role="assistant", content=reply))
+            return reply
+
+        messages.append(Message(role="assistant", content=reply))
+        for tool_name, args_str in tool_calls:
+            logger.info("解析到工具调用（将跳过）: %s", tool_name)
+            messages.append(
+                Message(
+                    role="user",
+                    content=f"[注意：请直接基于已有材料生成结果，{tool_name} 调用已省略]",
+                )
+            )
+
     logger.warning("达到最大轮数 %d，终止", max_turns)
     return messages[-1].content if messages else ""

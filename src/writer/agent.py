@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,8 @@ class WriterAgent:
         report.title_candidates = plan_result["title_candidates"]
 
         # 阶段 1：各章写作（上下文传递）
+        # 先设置 plan（所有章节的 format 模板都依赖它）
+        report.plan = plan_result["plan"]
         self._write_chapters(topic, explorer_report, report)
 
         logger.info("Writer 完成！")
@@ -181,35 +184,36 @@ class WriterAgent:
         er: ExplorerReport,
         report: WriterReport,
     ) -> None:
-        """顺序写作各章节，report 作为上下文传递载体"""
+        """并发写作各章节（依赖关系：引言∥标题 → 正文 → 结论∥参考文献∥关键词 → 摘要）"""
 
-        # ── 1. 标题（来自规划候选 + 确认）───────────────────
-        report.title = self._write_title(topic, report)
+        # ── 阶段 A：标题 + 引言（无依赖，并发）────────────────
+        with ThreadPoolExecutor(max_workers=self.llm._cfg.max_concurrency) as pool:
+            f_title = pool.submit(self._write_title, topic, report)
+            f_intro = pool.submit(self._write_introduction, topic, er, report)
+            report.title = f_title.result()
+            report.introduction = f_intro.result()
 
-        # ── 2. 引言 ──────────────────────────────────────────
-        report.introduction = self._write_introduction(topic, er, report)
-
-        # ── 3. 正文 ──────────────────────────────────────────
+        # ── 阶段 B：正文（依赖标题+引言）──────────────────────
         report.body = self._write_body(topic, er, report)
 
-        # ── 4. 结论 ─────────────────────────────────────────
-        report.conclusion = self._write_conclusion(topic, er, report)
+        # ── 阶段 C：结论 + 参考文献 + 关键词（均依赖正文，并发）──
+        with ThreadPoolExecutor(max_workers=self.llm._cfg.max_concurrency) as pool:
+            f_conc = pool.submit(self._write_conclusion, topic, er, report)
+            f_ref = pool.submit(self._collect_references, topic, er, report)
+            f_kw = pool.submit(self._extract_keywords, topic, er, report)
+            report.conclusion = f_conc.result()
+            report.references = f_ref.result()
+            report.keywords = f_kw.result()
 
-        # ── 5. 参考文献 ───────────────────────────────────────
-        report.references = self._collect_references(topic, er, report)
-
-        # ── 6. 摘要 ─────────────────────────────────────────
+        # ── 阶段 D：摘要（依赖结论+正文）──────────────────────
         report.abstract = self._write_abstract(topic, er, report)
-
-        # ── 7. 关键词 ────────────────────────────────────────
-        report.keywords = self._extract_keywords(topic, er, report)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 各章节实现
     # ─────────────────────────────────────────────────────────────────────────
 
     def _write_title(self, topic: str, report: WriterReport) -> str:
-        system = _load_prompt("title_system.txt").format(topic=topic)
+        system = _load_prompt("title_system.txt").format(topic=topic, plan=report.plan[:2000])
         user = _load_prompt("title_user.txt").format(
             topic=topic,
             plan=report.plan[:2000],  # 规划作为参考上下文
@@ -234,13 +238,13 @@ class WriterAgent:
             topic=topic,
             plan=report.plan[:2000],  # 引入规划约束
             title=report.title,
+            overview=(er.stage1_overview or er.stage1_search_results or "")[:3000],
+            classics=(er.stage2_timeline or "\n".join(
+                f"- {c.title} ({c.year})" for c in (er.stage2_classics or [])
+            ))[:2000],
         )
         user = _load_prompt("introduction_user.txt").format(
             topic=topic,
-            overview=(er.stage1_overview or er.stage1_search_results or "")[:3000],
-            classics=(er.stage2_timeline or "\n".join(
-                f"- {c.title} ({c.year})" for c in er.stage2_classics
-            ))[:2000],
             title=report.title,  # 标题作为已确定信息传入
         )
 
@@ -264,6 +268,21 @@ class WriterAgent:
             plan=report.plan[:2000],  # 分类体系作为骨架约束
             title=report.title,
             introduction_preview=report.introduction[:500],  # 承上启下
+            overview=(er.stage1_overview or er.stage1_search_results or "")[:3000],
+            classics="\n".join(
+                f"- **{c.title}** ({c.year}): 请补充核心贡献"
+                for c in er.stage2_classics[:15]
+            ),
+            sota=(er.stage3_state_of_art or "")[:2000],
+            benchmarks="\n".join(
+                f"- {b.name}" + (f" URL: {b.url}" if b.url else "")
+                for b in er.stage3_benchmarks
+            )[:1500],
+            trends=(
+                er.stage3_trends
+                if isinstance(er.stage3_trends, str)
+                else "\n".join(er.stage3_trends or [])
+            )[:1000],
         )
         user = _load_prompt("body_user.txt").format(
             topic=topic,
@@ -306,7 +325,13 @@ class WriterAgent:
             plan=report.plan[:1500],
             title=report.title,
             introduction_summary=report.introduction[:300],
-            body_preview=report.body[:500],  # 注入正文摘要，引导结论引用
+            body_preview=report.body[:500],
+            body_summary=report.body[:500],
+            trends=(
+                er.stage3_trends
+                if isinstance(er.stage3_trends, str)
+                else "\n".join(er.stage3_trends or [])
+            )[:1000],
         )
         user = _load_prompt("conclusion_user.txt").format(
             topic=topic,
@@ -334,13 +359,13 @@ class WriterAgent:
     def _collect_references(
         self, topic: str, er: ExplorerReport, report: WriterReport,
     ) -> str:
-        system = _load_prompt("references_system.txt").format(
-            topic=topic,
-            plan=report.plan[:1000],
-        )
         classics_text = "\n".join(
             f"- {c.title} ({c.year})"
             for c in er.stage2_classics[:20]
+        )
+
+        system = _load_prompt("references_system.txt").format(
+            classics=classics_text,
         )
 
         user = _load_prompt("references_user.txt").format(
@@ -367,6 +392,12 @@ class WriterAgent:
             topic=topic,
             title=report.title,
             body_preview=report.body[:500],
+            conclusion_preview=report.conclusion[:300],
+            introduction=(er.stage1_overview or er.stage1_search_results or "")[:2000],
+            classics="\n".join(
+                f"- {c.title} ({c.year})" for c in er.stage2_classics[:5]
+            ),
+            sota=(er.stage3_state_of_art or "")[:1000],
         )
         user = _load_prompt("abstract_user.txt").format(
             topic=topic,
@@ -395,13 +426,12 @@ class WriterAgent:
     def _extract_keywords(
         self, topic: str, er: ExplorerReport, report: WriterReport,
     ) -> list[str]:
+        concepts_text = "\n".join((er.stage1_concepts or [])[:10])
         system = _load_prompt("keywords_system.txt").format(
-            topic=topic,
-            plan=report.plan[:1000],
+            concepts=concepts_text,
         )
         user = _load_prompt("keywords_user.txt").format(
             topic=topic,
-            concepts=(er.stage1_concepts or [])[:10],
         )
 
         messages = [

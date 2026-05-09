@@ -13,3 +13,4 @@ def load_prompt(filename: str) -> str:
 
 SYSTEM_PROMPT = load_prompt("system.txt")
 USER_PROMPT_TEMPLATE = load_prompt("user.txt")
+USER_PROMPT_NO_SEARCH = load_prompt("user_no_search.txt")

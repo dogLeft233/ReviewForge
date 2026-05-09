@@ -28,6 +28,7 @@ class LLMConfig:
     max_tokens: int = 2000
     timeout_seconds: float = 120.0
     max_retries: int = 2
+    max_concurrency: int = 4  # 全局 LLM 并发上限
 
 
 # ──────────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ class LLM:
         max_tokens: int = 2000,
         timeout_seconds: float = 120.0,
         max_retries: int = 2,
+        max_concurrency: int = 4,
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
@@ -178,6 +180,7 @@ class LLM:
             max_tokens=max_tokens,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
+            max_concurrency=max_concurrency,
         )
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
