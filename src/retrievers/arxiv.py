@@ -1,6 +1,7 @@
 """arXiv 论文检索器 — 免费，无需 API Key"""
 
 import re
+import time
 import xml.etree.ElementTree as ET
 from typing import Any
 from urllib.parse import quote
@@ -67,7 +68,22 @@ class ArxivRetriever(BaseRetriever):
         if settings.arxiv_email:
             headers = kwargs.setdefault("headers", {})
             headers["User-Agent"] = f"ReviewForge/1.0 (mailto:{settings.arxiv_email})"
-        return super()._get(url, **kwargs)
+        start = time.perf_counter()
+        try:
+            resp = super()._get(url, **kwargs)
+        except Exception:
+            elapsed = time.perf_counter() - start
+            logger.exception("arxiv request failed: elapsed=%.3fs url=%s", elapsed, url)
+            raise
+
+        elapsed = time.perf_counter() - start
+        logger.info(
+            "arxiv request finished: status=%s elapsed=%.3fs url=%s",
+            resp.status_code,
+            elapsed,
+            url,
+        )
+        return resp
 
     # ── 解析 ──
 

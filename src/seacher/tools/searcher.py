@@ -112,8 +112,8 @@ def search_arxiv_keywords(question: str, llm: Any, max_turns: int = 8) -> str:
     返回:
         LLM 最终生成的关键词建议文本
     """
-    from llm import Message
-    import seacher.prompts as prompts_mod
+    from src.llm import Message
+    import src.seacher.prompts as prompts_mod
     SYSTEM_PROMPT = prompts_mod.SYSTEM_PROMPT
     USER_PROMPT_TEMPLATE = prompts_mod.USER_PROMPT_TEMPLATE
 
@@ -170,8 +170,8 @@ def search_arxiv_keywords_with_explorer(
     返回:
         LLM 最终生成的关键词建议文本
     """
-    from llm import Message
-    import seacher.prompts as prompts_mod
+    from src.llm import Message
+    import src.seacher.prompts as prompts_mod
     SYSTEM_PROMPT = prompts_mod.SYSTEM_PROMPT
     USER_NO_SEARCH = prompts_mod.USER_PROMPT_NO_SEARCH
 
