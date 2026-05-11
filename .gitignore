@@ -11,6 +11,9 @@ venv/
 *.egg-info/
 dist/
 build/
+.claude/
+lib/
+*.streamlit/
 
 # uv
 uv.lock

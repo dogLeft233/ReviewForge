@@ -1,0 +1,6 @@
+streamlit>=1.32
+pandas>=2.0
+plotly>=5.18
+pyvis>=0.3.2
+graphviz>=0.20
+pydantic>=2.0
