@@ -16,17 +16,22 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from src.logging_config import get_logger, set_log_level, LOG_LEVELS, DEFAULT_LOG_LEVEL  # noqa: E402
+
 from src.visualizer.loader import load_demo_data, load_json  # noqa: E402
 from src.visualizer.schema import VisualizationData  # noqa: E402
-from ui.views import (  # noqa: E402
-    ask_agent,
+from ui.views import (
     benchmark,
     frontier,
     knowledge_graph,
     method_map,
     overview,
     timeline,
+    chat_agent,
 )
+
+# 初始化日志记录器
+logger = get_logger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +96,20 @@ def _sidebar(data: VisualizationData, source_label: str) -> dict:
     else:
         year_range = None
 
+    st.sidebar.divider()
+
+    # 日志级别设置
+    log_level = st.sidebar.selectbox(
+        "🪵 日志级别",
+        options=LOG_LEVELS,
+        index=LOG_LEVELS.index(st.session_state.get("log_level", DEFAULT_LOG_LEVEL)),
+        help="调整日志详细程度；DEBUG 会输出请求/响应详情",
+    )
+    if log_level != st.session_state.get("log_level"):
+        st.session_state["log_level"] = log_level
+        set_log_level(log_level)
+        st.sidebar.success(f"日志级别已调整为：{log_level}")
+
     return {
         "selected_categories": selected_categories,
         "year_range": year_range,
@@ -132,7 +151,7 @@ def main() -> None:
     with tabs[5]:
         knowledge_graph.render(data)
     with tabs[6]:
-        ask_agent.render(data)
+        chat_agent.render(data)
 
 
 main()

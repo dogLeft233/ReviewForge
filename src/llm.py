@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -10,8 +9,9 @@ from typing import Any
 import httpx
 
 from src.retrievers.ar5iv import Ar5ivRetriever
+from src.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -315,6 +315,9 @@ class LLM:
             "max_tokens": self._cfg.max_tokens,
         }
 
+        logger.debug("[LLM] Request payload: model=%s, messages_count=%d, temp=%.2f",
+                     self._cfg.model, len(all_messages), self._cfg.temperature)
+
         url = f"{self._base_url}/chat/completions"
         return payload, url
 
@@ -340,6 +343,7 @@ class LLM:
         match resp.status_code:
             case 200:
                 data = resp.json()
+                logger.debug("[LLM] Response raw: %s", data)
                 choices = data.get("choices", [])
                 if not choices:
                     raise APIError(status_code=200, detail="No choices in response")

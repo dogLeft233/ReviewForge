@@ -1,55 +1,79 @@
 #!/usr/bin/env python3
-"""Searcher Agent 测试程序
+"""ChatAgent 测试程序
 
 用法:
-    cd /mnt/e/Documents/ReviewForge/src
-    python3 seacher/test_agent.py
+    cd /mnt/e/Documents/github_clone/ReviewForge
+    python -m tests.test_agent
 
 验证流程：
-    1. 导入 SearcherAgent 和 LLM
+    1. 导入 ChatAgent 和 VisualizationData
     2. 用测试问题调用 agent
-    3. 打印生成结果（包含语义查询描述 + arXiv 关键词）
-    4. 人工验证关键词是否合理
+    3. 打印生成结果（流式输出）
+    4. 人工验证回答质量
 """
+
+from __future__ import annotations
 
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.llm import LLM
-from src.seacher import SearcherAgent
+from src.agent import ChatAgent
+from src.visualizer.schema import VisualizationData, Overview, Method, Paper
+
+
+def _create_sample_data() -> VisualizationData:
+    """创建示例 VisualizationData"""
+    return VisualizationData(
+        topic="Large Language Model Fine-tuning",
+        overview=Overview(
+            definition="大语言模型微调是指在预训练模型基础上，通过特定任务数据进一步训练以适应下游任务的技术。",
+            core_questions=[
+                "如何高效微调大模型？",
+                "LoRA 与全量微调的区别是什么？",
+                "哪些任务最适合微调？",
+            ],
+            key_concepts=["LoRA", "QLoRA", "Adapter", "Prefix Tuning"],
+        ),
+        methods=[
+            Method(id="m1", name="LoRA", category="Parameter-Efficient Fine-Tuning",
+                   description="低秩适配器，通过学习低秩矩阵减少可训练参数"),
+            Method(id="m2", name="QLoRA", category="Quantized Fine-Tuning",
+                   description="量化+LoRA，可在单卡微调 65B 模型"),
+        ],
+        papers=[
+            Paper(id="p1", title="LoRA: Low-Rank Adaptation of Large Language Models",
+                  year=2021, authors="Hu et al.", venue="ICLR 2022"),
+        ],
+    )
 
 
 def main():
-    API_KEY = "sk-grnzvqmqpizcjwszwfuyirfhwocbopgwhcibkitmrpsoauye"
-    MODEL = "Qwen/Qwen3-8B"
-    BASE_URL = "https://api.siliconflow.cn/v1"
+    print("=" * 60)
+    print("ChatAgent 测试")
+    print("=" * 60)
+
+    print("\n[1] 初始化 ChatAgent...")
+    try:
+        agent = ChatAgent(session_id="test_session")
+        print("    ✓ ChatAgent 初始化成功")
+    except Exception as e:
+        print(f"    ❌ 初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+
+    print("\n[2] 准备示例数据...")
+    data = _create_sample_data()
+    print(f"    Topic: {data.topic}")
+    print("    ✓ 数据准备完成")
 
     TEST_QUESTIONS = [
-        "LoRA 在大模型微调中的应用与最新进展",
-        "扩散模型（Diffusion Model）在图像生成领域的最新研究",
-        "Transformer 架构在自然语言处理中的改进与变体",
+        "解释 LoRA 的原理",
+        "LoRA 与全量微调相比有什么优势？",
+        "QLoRA 是如何实现单卡微调大模型的？",
     ]
-
-    print("=" * 60)
-    print("Searcher Agent 测试")
-    print("=" * 60)
-
-    print("\n[1] 初始化 LLM...")
-    llm = LLM(
-        api_key=API_KEY,
-        model=MODEL,
-        base_url=BASE_URL,
-        temperature=0.1,
-        max_tokens=1500,
-    )
-    print(f"    模型: {MODEL}")
-    print("    ✓ LLM 初始化成功")
-
-    print("\n[2] 初始化 SearcherAgent...")
-    agent = SearcherAgent(llm=llm, verbose=True)
-    print("    ✓ Agent 初始化成功")
 
     for i, question in enumerate(TEST_QUESTIONS, 1):
         print(f"\n{'=' * 60}")
@@ -59,9 +83,14 @@ def main():
         print("-" * 60)
 
         try:
-            result = agent.run(question)
-            print("\n生成结果:\n")
-            print(result)
+            print("\n流式输出:")
+            print(">>> ", end="", flush=True)
+            full_response = ""
+            for chunk in agent.ask_iter(question, data):
+                print(chunk, end="", flush=True)
+                full_response += chunk
+            print()
+            print(f"\n完整回答长度: {len(full_response)} 字符")
         except Exception as e:
             print(f"\n❌ 调用失败: {e}")
             import traceback
@@ -70,10 +99,10 @@ def main():
     print(f"\n{'=' * 60}")
     print("测试完成")
     print("=" * 60)
-    print("\n人工验证提示:")
-    print("  1. 语义查询描述是否完整、具体、有语义信息量？")
-    print("  2. arXiv 关键词是否符合 ti:/au:/abs:/cat: 规范？")
-    print("  3. 将关键词复制到 https://arxiv.org/search 验证相关性")
+    print("\n验证提示:")
+    print("  1. Agent 是否正确调用了 web_search/web_fetch？")
+    print("  2. Memory 是否保留了多轮对话历史？")
+    print("  3. 流式输出是否正常工作？")
 
 
 if __name__ == "__main__":
