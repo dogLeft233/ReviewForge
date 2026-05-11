@@ -13,13 +13,16 @@ from typing import Any
 
 from src.adapter.schema import VisualizationData
 from src.adapter.script_adapter import writer_json_to_visualization
+from src.visualizer.quality import assess_visualization_data
 
 logger = logging.getLogger(__name__)
 
 
 def convert(raw: dict[str, Any]) -> VisualizationData:
     """规则化转换，不调 LLM。"""
-    return writer_json_to_visualization(raw)
+    viz = writer_json_to_visualization(raw)
+    logger.info("[adapter] quality=%s", assess_visualization_data(viz))
+    return viz
 
 
 def convert_with_llm(
@@ -28,6 +31,7 @@ def convert_with_llm(
 ) -> VisualizationData:
     """先跑脚本转换，再过一遍 LLM refiner。LLM 不可用时静默退回脚本结果。"""
     viz = writer_json_to_visualization(raw)
+    logger.info("[adapter] script quality=%s", assess_visualization_data(viz))
 
     if llm is None:
         try:
@@ -50,7 +54,28 @@ def convert_with_llm(
     try:
         from src.adapter.llm_refiner import refine_with_llm
 
-        return refine_with_llm(viz, raw, llm)
+        refined = refine_with_llm(viz, raw, llm)
+        logger.info("[adapter] refined quality=%s", assess_visualization_data(refined))
+        return refined
     except Exception as exc:
         logger.warning("LLM refine 失败，回退脚本结果：%s", exc)
+        return viz
+
+
+def convert_with_openai_enhancement(
+    raw: dict[str, Any],
+    llm: Any | None = None,
+    *,
+    config_path: str | None = None,
+    force: bool = False,
+) -> VisualizationData:
+    """Script + local LLM refine + optional OpenAI Responses enhancement."""
+
+    viz = convert_with_llm(raw, llm=llm)
+    try:
+        from src.adapter.openai_responses_enhancer import enhance_with_openai_responses
+
+        return enhance_with_openai_responses(viz, raw, config_path=config_path, force=force)
+    except Exception as exc:
+        logger.warning("OpenAI enhancement failed, keeping previous result: %s", exc)
         return viz

@@ -1,4 +1,4 @@
-"""Frontier tab — card grid of前沿趋势."""
+"""Frontier tab - card grid of research trends."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from src.visualizer.schema import VisualizationData
 
 
 def render(data: VisualizationData) -> None:
-    st.subheader("🚀 前沿趋势")
+    st.subheader("Frontier Trends")
 
     if not data.frontiers:
-        st.info("当前数据中没有 frontier 信息。")
+        st.info("No frontier information in the current data.")
         return
 
     method_lookup = {m.id: m.name for m in data.methods}
-    paper_lookup = {p.id: p.title for p in data.papers}
+    paper_lookup = {p.id: p for p in data.papers}
 
     cols_per_row = 2
     for row_start in range(0, len(data.frontiers), cols_per_row):
@@ -27,14 +27,22 @@ def render(data: VisualizationData) -> None:
             f = data.frontiers[idx]
             with col:
                 with st.container(border=True):
-                    st.markdown(f"### {f.name or '(未命名趋势)'}")
+                    st.markdown(f"### {f.name or '(unnamed trend)'}")
                     if f.description:
                         st.write(f.description)
                     if f.importance:
-                        st.markdown(f"**为什么重要**：{f.importance}")
+                        st.markdown(f"**Importance**: {f.importance}")
                     if f.related_methods:
                         names = [method_lookup.get(mid, mid) for mid in f.related_methods]
-                        st.markdown("**相关方法**：" + ", ".join(f"`{n}`" for n in names))
+                        st.markdown("**Related Methods**: " + ", ".join(f"`{n}`" for n in names))
                     if f.related_papers:
-                        names = [paper_lookup.get(pid, pid) for pid in f.related_papers]
-                        st.markdown("**相关论文**：" + "； ".join(names))
+                        links = []
+                        for pid in f.related_papers:
+                            paper = paper_lookup.get(pid)
+                            if paper and paper.url:
+                                links.append(f"[{paper.title}]({paper.url})")
+                            elif paper:
+                                links.append(paper.title)
+                            else:
+                                links.append(pid)
+                        st.markdown("**Related Papers**: " + " · ".join(links))

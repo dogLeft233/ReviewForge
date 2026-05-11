@@ -20,6 +20,7 @@ _NODE_COLORS = {
     "metric": "#8c564b",
     "trend": "#e377c2",
     "concept": "#7f7f7f",
+    "resource": "#17becf",
 }
 
 

@@ -8,7 +8,7 @@
 VisualizationData.needs_research，等后续 research 阶段补齐。
 """
 
-from src.adapter.pipeline import convert, convert_with_llm
+from src.adapter.pipeline import convert, convert_with_llm, convert_with_openai_enhancement
 from src.adapter.schema import (
     Benchmark,
     Frontier,
@@ -18,6 +18,7 @@ from src.adapter.schema import (
     Method,
     Overview,
     Paper,
+    Resource,
     ResearchTask,
     TimelineEvent,
     VisualizationData,
@@ -26,10 +27,12 @@ from src.adapter.schema import (
 __all__ = [
     "convert",
     "convert_with_llm",
+    "convert_with_openai_enhancement",
     "VisualizationData",
     "Overview",
     "TimelineEvent",
     "Paper",
+    "Resource",
     "Method",
     "Benchmark",
     "Frontier",

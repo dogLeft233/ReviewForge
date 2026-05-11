@@ -350,3 +350,26 @@ python scripts/export_viz.py tmp/ASR自动语音识别
 streamlit run ui/app.py
 # 侧栏上传刚生成的 tmp/ASR自动语音识别/visualization_data.json
 ```
+## OpenAI Responses API 增强（可选）
+
+项目根目录提供 `adapter_enhance.yaml`。默认 `enabled: false`，不会产生 OpenAI API 调用。
+
+如需启用专业性评估、web search 补链和结构化增强：
+
+```yaml
+enabled: true
+openai:
+  api_key: "你的 OpenAI API key"
+  model: "gpt-4o"
+web_search:
+  enabled: true
+  tool_type: "web_search_preview"
+```
+
+导出时显式开启：
+
+```powershell
+python scripts/export_viz.py tmp/ASR自动语音识别 --openai-enhance
+```
+
+增强层会先运行现有 adapter 和本地 LLM refiner，再调用 OpenAI Responses API。它默认只增强表述、分类、关联和来源链接，不会凭空改作者、年份、benchmark 分数等事实字段。

@@ -19,6 +19,7 @@ from src.adapter.schema import (
     Method,
     Overview,
     Paper,
+    Resource,
     ResearchTask,
     TimelineEvent,
     VisualizationData,
@@ -31,6 +32,39 @@ _SLUG_RE = re.compile(r"\W+")
 def _slug(s: str, prefix: str = "") -> str:
     base = _SLUG_RE.sub("_", (s or "").lower()).strip("_") or "x"
     return f"{prefix}{base[:38]}"
+
+
+def _norm_text(s: str) -> str:
+    return _SLUG_RE.sub(" ", (s or "").lower()).strip()
+
+
+def _tokens(s: str) -> set[str]:
+    text = (s or "").lower()
+    tokens = {t for t in re.split(r"\W+", text) if len(t) >= 3}
+    cjk = "".join(re.findall(r"[\u4e00-\u9fff]", text))
+    tokens.update(cjk[i:i + 2] for i in range(max(0, len(cjk) - 1)))
+    return tokens
+
+
+def _has_text_hit(needle: str, haystack: str) -> bool:
+    needle = _norm_text(needle)
+    haystack = _norm_text(haystack)
+    if not needle or not haystack:
+        return False
+    if needle in haystack:
+        return True
+    compact_needle = re.sub(r"[\W_]+", "", needle)
+    compact_haystack = re.sub(r"[\W_]+", "", haystack)
+    if compact_needle and compact_needle in compact_haystack:
+        return True
+    ns = _tokens(needle)
+    hs = _tokens(haystack)
+    return bool(ns) and len(ns & hs) >= max(2, min(4, len(ns)))
+
+
+def _append_pending_once(pending: list[ResearchTask], task: ResearchTask) -> None:
+    if not any(t.target == task.target for t in pending):
+        pending.append(task)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -500,6 +534,428 @@ def writer_json_to_visualization(raw: dict[str, Any]) -> VisualizationData:
         papers=papers,
         benchmarks=benchmarks,
         frontiers=frontiers,
+        graph=graph,
+        needs_research=pending,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Enhanced adapter pass.
+#
+# These definitions intentionally shadow the earlier conservative builders.
+# Keeping the original code above makes the old behavior easy to compare while
+# allowing the exported module functions to consume richer source fields.
+# ---------------------------------------------------------------------------
+
+
+def _build_papers(
+    raw: dict[str, Any], pending: list[ResearchTask]
+) -> tuple[list[Paper], dict[str, str]]:
+    """Return merged papers plus title-to-id mapping for later references."""
+
+    report = raw.get("explorer_report") or {}
+    raw_papers = ex.extract_papers_from_classics(report.get("stage2_classics") or [])
+    raw_papers += ex.extract_papers_from_table(str(report.get("stage2_timeline") or ""))
+    raw_papers += ex.extract_papers_from_searcher(raw.get("searcher_papers") or [])
+
+    by_id: dict[str, Paper] = {}
+    title_to_id: dict[str, str] = {}
+    for rp in raw_papers:
+        if not rp.title:
+            continue
+        pid = _slug(rp.title, prefix="p_")
+        title_to_id[rp.title.lower()] = pid
+        existing = by_id.get(pid)
+        if existing is None:
+            by_id[pid] = Paper(
+                id=pid,
+                title=rp.title,
+                year=rp.year,
+                authors=rp.authors,
+                venue=rp.venue,
+                summary=rp.summary,
+                url=rp.url,
+            )
+        else:
+            by_id[pid] = existing.model_copy(update={
+                "year": existing.year or rp.year,
+                "authors": existing.authors or rp.authors,
+                "venue": existing.venue or rp.venue,
+                "summary": existing.summary or rp.summary,
+                "url": existing.url or rp.url,
+            })
+
+    papers = list(by_id.values())
+    for paper in papers:
+        if not paper.year:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"paper:{paper.id}.year",
+                    reason="source data did not provide a reliable publication year",
+                    hint=f"Find the publication year for paper: {paper.title}",
+                ),
+            )
+        if not paper.authors:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"paper:{paper.id}.authors",
+                    reason="source data did not provide reliable authors",
+                    hint=f"Find the author list for paper: {paper.title}",
+                ),
+            )
+        if not paper.url:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"paper:{paper.id}.url",
+                    reason="source data did not provide a paper URL",
+                    hint=f"Find the arXiv / DOI / official URL for paper: {paper.title}",
+                ),
+            )
+
+    if not papers:
+        _append_pending_once(
+            pending,
+            ResearchTask(
+                target="papers",
+                reason="no papers parsed from stage2_classics, stage2_timeline, or searcher_papers",
+                hint=f"Find 5-10 representative papers for {raw.get('topic', 'this topic')}",
+            ),
+        )
+
+    return papers, title_to_id
+
+
+def _build_benchmarks(raw: dict[str, Any], pending: list[ResearchTask]) -> list[Benchmark]:
+    report = raw.get("explorer_report") or {}
+    raw_rows = ex.extract_benchmarks_from_field(report.get("stage3_benchmarks") or [])
+    raw_rows += ex.extract_benchmarks_from_text(str(report.get("stage3_search_results") or ""))
+    raw_rows += ex.extract_benchmarks_from_text(str(report.get("stage3_state_of_art") or ""))
+
+    seen: set[tuple[str, str, str, float, int]] = set()
+    out: list[Benchmark] = []
+    for r in raw_rows:
+        key = (r.model.lower(), r.dataset.lower(), r.metric.lower(), r.score, r.year)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            Benchmark(
+                model=r.model,
+                dataset=r.dataset,
+                metric=r.metric,
+                score=r.score,
+                year=r.year,
+                url=r.url,
+            )
+        )
+
+    for i, b in enumerate(out):
+        if not b.model:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"benchmark:{i}.model",
+                    reason="leaderboard parsing did not find a model name",
+                    hint=f"Find the SOTA model for dataset {b.dataset}",
+                ),
+            )
+        if not b.score:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"benchmark:{i}.score",
+                    reason="leaderboard parsing did not find a numeric score",
+                    hint=f"Find {b.metric or 'the main metric'} for {b.model or '?'} on {b.dataset}",
+                ),
+            )
+        if not b.year:
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"benchmark:{i}.year",
+                    reason="leaderboard parsing did not find a result year",
+                    hint=f"Find the release year for {b.model or '?'} on {b.dataset}",
+                ),
+            )
+
+    if not out:
+        _append_pending_once(
+            pending,
+            ResearchTask(
+                target="benchmarks",
+                reason="no benchmark rows parsed from stage3_benchmarks or stage3 reports",
+                hint=f"List 3-5 common benchmarks and current SOTA rows for {raw.get('topic', 'this topic')}",
+            ),
+        )
+    return out
+
+
+def _build_frontiers(raw: dict[str, Any], pending: list[ResearchTask]) -> list[Frontier]:
+    report = raw.get("explorer_report") or {}
+    raws = ex.extract_frontiers(
+        str(report.get("stage3_state_of_art") or ""),
+        str(report.get("downstream_report") or ""),
+        str(report.get("stage3_search_results") or ""),
+    )
+    trend_raws = ex.extract_frontiers_from_trends(report.get("stage3_trends") or [])
+
+    seen: set[str] = set()
+    out: list[Frontier] = []
+    for f in [*raws, *trend_raws]:
+        key = f.name.lower()
+        if not f.name or key in seen:
+            continue
+        seen.add(key)
+        out.append(Frontier(name=f.name, description=f.description, importance=""))
+
+    if not out:
+        _append_pending_once(
+            pending,
+            ResearchTask(
+                target="frontiers",
+                reason="no frontier trends parsed from stage3 reports",
+                hint=f"List 5-8 current frontier directions for {raw.get('topic', 'this topic')}",
+            ),
+        )
+    else:
+        for i, f in enumerate(out):
+            _append_pending_once(
+                pending,
+                ResearchTask(
+                    target=f"frontier:{i}.importance",
+                    reason="script cannot rank trend importance reliably",
+                    hint=f"Assess importance of frontier direction: {f.name}",
+                ),
+            )
+    return out
+
+
+def _link_methods_to_papers(methods: list[Method], papers: list[Paper]) -> list[Method]:
+    linked: list[Method] = []
+    for method in methods:
+        refs: list[str] = []
+        for paper in papers:
+            haystack = f"{paper.title} {paper.summary}"
+            if _has_text_hit(method.name, haystack):
+                refs.append(paper.id)
+        linked.append(method.model_copy(update={"papers": refs or method.papers}))
+    return linked
+
+
+def _link_frontiers(
+    frontiers: list[Frontier],
+    methods: list[Method],
+    papers: list[Paper],
+) -> list[Frontier]:
+    linked: list[Frontier] = []
+    for frontier in frontiers:
+        text = f"{frontier.name} {frontier.description}"
+        related_methods = [
+            method.id for method in methods
+            if _has_text_hit(method.name, text) or _has_text_hit(text, method.description)
+        ]
+        related_papers = [
+            paper.id for paper in papers
+            if _has_text_hit(frontier.name, f"{paper.title} {paper.summary}")
+        ]
+        linked.append(frontier.model_copy(update={
+            "related_methods": related_methods or frontier.related_methods,
+            "related_papers": related_papers or frontier.related_papers,
+        }))
+    return linked
+
+
+def _build_resources(
+    raw: dict[str, Any],
+    methods: list[Method],
+    papers: list[Paper],
+) -> list[Resource]:
+    report = raw.get("explorer_report") or {}
+    resources = ex.extract_resources_from_text(
+        str(report.get("stage2_timeline") or ""),
+        str(report.get("stage2_search_results") or ""),
+        str(report.get("stage3_state_of_art") or ""),
+        str(report.get("stage3_search_results") or ""),
+        str(report.get("downstream_report") or ""),
+        str(raw.get("searcher_result") or ""),
+    )
+
+    out: list[Resource] = []
+    seen: set[str] = set()
+    for r in resources:
+        if not r.url or r.url in seen:
+            continue
+        seen.add(r.url)
+        text = f"{r.name} {r.description} {r.url}"
+        related_methods = [
+            method.id for method in methods
+            if _has_text_hit(method.name, text)
+        ]
+        related_papers = [
+            paper.id for paper in papers
+            if _has_text_hit(paper.title, text) or _has_text_hit(text, paper.title)
+        ]
+        out.append(
+            Resource(
+                id=_slug(r.url, prefix="r_"),
+                name=r.name,
+                type=r.type,
+                url=r.url,
+                description=r.description,
+                related_methods=related_methods,
+                related_papers=related_papers,
+            )
+        )
+    return out
+
+
+def _backfill_paper_urls_from_resources(
+    papers: list[Paper],
+    resources: list[Resource],
+) -> list[Paper]:
+    updated: list[Paper] = []
+    for paper in papers:
+        if paper.url:
+            updated.append(paper)
+            continue
+        match = next(
+            (
+                r for r in resources
+                if r.type == "paper"
+                and (_has_text_hit(paper.title, r.name) or _has_text_hit(paper.title, r.description))
+            ),
+            None,
+        )
+        updated.append(paper.model_copy(update={"url": match.url}) if match else paper)
+    return updated
+
+
+def _build_graph(
+    topic: str,
+    methods: list[Method],
+    papers: list[Paper],
+    benchmarks: list[Benchmark],
+    frontiers: list[Frontier],
+    resources: list[Resource] | None = None,
+) -> KnowledgeGraph:
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    seen: set[str] = set()
+    edge_seen: set[tuple[str, str, str]] = set()
+
+    def add(nid: str, label: str, ntype: str) -> None:
+        if nid in seen:
+            return
+        seen.add(nid)
+        nodes.append(GraphNode(id=nid, label=label, type=ntype))  # type: ignore[arg-type]
+
+    def connect(source: str, target: str, relation: str) -> None:
+        key = (source, target, relation)
+        if source == target or key in edge_seen:
+            return
+        edge_seen.add(key)
+        edges.append(GraphEdge(source=source, target=target, relation=relation))  # type: ignore[arg-type]
+
+    topic_id = _slug(topic, prefix="t_")
+    add(topic_id, topic, "topic")
+
+    cat_ids: dict[str, str] = {}
+    for method in methods:
+        if method.category:
+            cid = cat_ids.setdefault(method.category, _slug(method.category, prefix="c_"))
+            add(cid, method.category, "concept")
+            connect(cid, topic_id, "belongs_to")
+        add(method.id, method.name, "method")
+        connect(method.id, cat_ids.get(method.category, topic_id), "belongs_to")
+
+    paper_lookup = {p.id: p for p in papers}
+    for paper in papers:
+        add(paper.id, paper.title[:45] or paper.id, "paper")
+        connected = False
+        for method in methods:
+            if paper.id in method.papers or _has_text_hit(method.name, f"{paper.title} {paper.summary}"):
+                connect(paper.id, method.id, "proposes")
+                connected = True
+        if not connected:
+            connect(paper.id, topic_id, "related_to")
+
+    for i, bench in enumerate(benchmarks):
+        bid = _slug(f"{bench.model}_{bench.dataset}_{i}", prefix="bm_")
+        label = f"{bench.model or '(unknown)'} ({bench.score}{bench.metric})" if bench.score else (bench.model or f"benchmark {i + 1}")
+        add(bid, label, "benchmark")
+        connect(bid, topic_id, "related_to")
+        if bench.dataset:
+            did = _slug(bench.dataset, prefix="d_")
+            add(did, bench.dataset, "dataset")
+            connect(bid, did, "evaluated_on")
+        if bench.metric:
+            mid = _slug(bench.metric, prefix="metric_")
+            add(mid, bench.metric, "metric")
+            connect(bid, mid, "uses")
+        for method in methods:
+            if _has_text_hit(method.name, bench.model):
+                connect(bid, method.id, "uses")
+                break
+
+    for i, frontier in enumerate(frontiers):
+        fid = _slug(frontier.name or f"frontier_{i}", prefix="tr_")
+        add(fid, frontier.name, "trend")
+        connect(fid, topic_id, "related_to")
+        for method_id in frontier.related_methods:
+            connect(fid, method_id, "related_to")
+        for paper_id in frontier.related_papers:
+            if paper_id in paper_lookup:
+                connect(fid, paper_id, "related_to")
+
+    for resource in resources or []:
+        add(resource.id, resource.name, "resource")
+        connect(resource.id, topic_id, "related_to")
+        for method_id in resource.related_methods:
+            connect(resource.id, method_id, "related_to")
+        for paper_id in resource.related_papers:
+            if paper_id in paper_lookup:
+                connect(resource.id, paper_id, "related_to")
+
+    return KnowledgeGraph(nodes=nodes, edges=edges)
+
+
+def rebuild_graph(viz: VisualizationData) -> VisualizationData:
+    """Rebuild graph from the current refined entities."""
+
+    return viz.model_copy(update={
+        "graph": _build_graph(viz.topic, viz.methods, viz.papers, viz.benchmarks, viz.frontiers, viz.resources)
+    })
+
+
+def writer_json_to_visualization(raw: dict[str, Any]) -> VisualizationData:
+    """Enhanced conversion from step3_writer_done.json to VisualizationData."""
+
+    topic = str(raw.get("topic") or "Unknown Topic")
+    pending: list[ResearchTask] = []
+
+    overview = _build_overview(raw, pending)
+    methods = _build_methods(raw, pending)
+    papers, title_to_id = _build_papers(raw, pending)
+    methods = _link_methods_to_papers(methods, papers)
+    resources = _build_resources(raw, methods, papers)
+    papers = _backfill_paper_urls_from_resources(papers, resources)
+    timeline = _build_timeline(raw, papers, title_to_id, pending)
+    benchmarks = _build_benchmarks(raw, pending)
+    frontiers = _link_frontiers(_build_frontiers(raw, pending), methods, papers)
+    graph = _build_graph(topic, methods, papers, benchmarks, frontiers, resources)
+
+    return VisualizationData(
+        topic=topic,
+        overview=overview,
+        timeline=timeline,
+        methods=methods,
+        papers=papers,
+        benchmarks=benchmarks,
+        frontiers=frontiers,
+        resources=resources,
         graph=graph,
         needs_research=pending,
     )

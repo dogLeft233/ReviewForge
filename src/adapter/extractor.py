@@ -25,6 +25,7 @@ class RawPaper:
     summary: str = ""
     contribution: str = ""
     impact: str = ""
+    url: str = ""
 
 
 @dataclass(slots=True)
@@ -53,6 +54,14 @@ class RawFrontier:
     importance: str = ""
 
 
+@dataclass(slots=True)
+class RawResource:
+    name: str = ""
+    type: str = "resource"
+    url: str = ""
+    description: str = ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 通用工具
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +86,16 @@ def _category_from_phase(phase: str) -> str:
     s = re.sub(r"^\s*\d{4}\s*[-–]?\s*\d{0,4}[\s年代]*\s*[:：]?\s*", "", s).strip()
     s = s.strip("：:").strip()
     return s
+
+
+def _clean_url(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "](" in text:
+        text = text.split("](", 1)[-1]
+    m = re.search(r"https?://[^\s\]\)）>]+", text)
+    return re.sub(r"[),.;，。]+$", "", m.group(0)) if m else ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -154,10 +173,56 @@ def extract_papers_from_table(markdown: str) -> list[RawPaper]:
                 summary=contribution or impact,
                 contribution=contribution,
                 impact=impact,
+                url=_clean_url(raw_line),
             )
         )
 
     return papers
+
+
+def extract_papers_from_classics(classics: list[Any]) -> list[RawPaper]:
+    """Parse explorer_report.stage2_classics entries.
+
+    The data may arrive as dataclasses serialized to dicts, plain dicts, or
+    fallback strings. Keep only fields that are explicitly present.
+    """
+
+    out: list[RawPaper] = []
+    for item in classics or []:
+        if isinstance(item, dict):
+            title = str(item.get("title") or item.get("name") or "").strip()
+            if not title:
+                continue
+            year = int(item.get("year") or _first_year(str(item)) or 0)
+            key_idea = str(item.get("key_idea") or item.get("summary") or "").strip()
+            impact = str(item.get("impact") or "").strip()
+            out.append(
+                RawPaper(
+                    title=title,
+                    year=year,
+                    authors=str(item.get("authors") or item.get("author") or "").strip(),
+                    venue=str(item.get("venue") or item.get("source") or "").strip(),
+                    summary=key_idea or impact,
+                    contribution=key_idea,
+                    impact=impact,
+                    url=_clean_url(item.get("url") or item.get("link") or item.get("doi")),
+                )
+            )
+            continue
+
+        text = str(item or "").strip()
+        if not text:
+            continue
+        title = _BOLD_RE.search(text)
+        out.append(
+            RawPaper(
+                title=(title.group(1).strip() if title else re.sub(r"^\s*[-*]\s*", "", text)[:120]),
+                year=_first_year(text),
+                summary=text,
+                url=_clean_url(text),
+            )
+        )
+    return out
 
 
 def extract_papers_from_searcher(searcher_papers: list[Any]) -> list[RawPaper]:
@@ -175,6 +240,13 @@ def extract_papers_from_searcher(searcher_papers: list[Any]) -> list[RawPaper]:
                 authors=str(item.get("authors") or item.get("author") or ""),
                 venue=str(item.get("venue") or item.get("source") or ""),
                 summary=str(item.get("summary") or item.get("description") or item.get("abstract") or ""),
+                url=_clean_url(
+                    item.get("url")
+                    or item.get("link")
+                    or item.get("paper_url")
+                    or item.get("pdf_url")
+                    or item.get("doi")
+                ),
             )
         )
     return out
@@ -272,9 +344,8 @@ def extract_benchmarks_from_field(stage3_benchmarks: list[Any]) -> list[RawBench
         if "](" in url:
             url = url.split("](", 1)[0]
         metric = str(bm.get("metric") or "").strip()
-        leaderboard = str(bm.get("leaderboard") or "")
-
-        rows = _parse_leaderboard(leaderboard, default_dataset=ds, default_metric=metric, default_url=url)
+        leaderboard_obj = bm.get("leaderboard") or ""
+        rows = _parse_leaderboard_obj(leaderboard_obj, default_dataset=ds, default_metric=metric, default_url=url)
         if rows:
             out.extend(rows)
         else:
@@ -284,6 +355,40 @@ def extract_benchmarks_from_field(stage3_benchmarks: list[Any]) -> list[RawBench
 
 _PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 _NUM_RE = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def _parse_leaderboard_obj(
+    value: Any,
+    *,
+    default_dataset: str,
+    default_metric: str,
+    default_url: str,
+) -> list[RawBenchmark]:
+    if isinstance(value, list):
+        rows: list[RawBenchmark] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            model = str(item.get("model") or item.get("name") or item.get("method") or "").strip()
+            if not model:
+                continue
+            score = item.get("score") or item.get("value") or item.get("result") or 0
+            try:
+                score_val = float(str(score).strip().rstrip("%"))
+            except (TypeError, ValueError):
+                score_val = 0.0
+            rows.append(
+                RawBenchmark(
+                    model=model,
+                    dataset=str(item.get("dataset") or default_dataset or "").strip(),
+                    metric=str(item.get("metric") or default_metric or "").strip(),
+                    score=score_val,
+                    year=_first_year(str(item.get("year") or item.get("date") or item.get("note") or "")),
+                    url=_clean_url(item.get("url")) or default_url,
+                )
+            )
+        return rows
+    return _parse_leaderboard(str(value or ""), default_dataset=default_dataset, default_metric=default_metric, default_url=default_url)
 
 
 def _parse_leaderboard(
@@ -358,6 +463,40 @@ def _parse_leaderboard(
     return rows
 
 
+_SOTA_LINE_RE = re.compile(
+    r"(?:\*\*)?(?P<model>[\w .+\-/()]{2,80})(?:\*\*)?\s*"
+    r"(?:在|on)\s*(?P<dataset>[\w .+\-/()一-龥]{2,80})\s*"
+    r"(?:上)?(?:达到|实现|取得|achieves?|gets?|with)?\s*"
+    r"(?:\*\*)?(?P<score>\d+(?:\.\d+)?)\s*%?\s*(?P<metric>[A-Za-z一-龥]+)?",
+    re.IGNORECASE,
+)
+
+
+def extract_benchmarks_from_text(text: str, *, default_url: str = "") -> list[RawBenchmark]:
+    """Extract simple SOTA lines from markdown reports/search results."""
+
+    out: list[RawBenchmark] = []
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip(" -*\t")
+        if not line:
+            continue
+        m = _SOTA_LINE_RE.search(line)
+        if not m:
+            continue
+        metric = (m.group("metric") or "").strip("：:，,。.)")
+        out.append(
+            RawBenchmark(
+                model=m.group("model").strip(" -*"),
+                dataset=m.group("dataset").strip(" -*：:，,。"),
+                metric=metric,
+                score=float(m.group("score")),
+                year=_first_year(line),
+                url=_clean_url(line) or default_url,
+            )
+        )
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 前沿趋势抽取
 # ─────────────────────────────────────────────────────────────────────────────
@@ -393,3 +532,81 @@ def extract_frontiers(*texts: str, max_count: int = 8) -> list[RawFrontier]:
         if len(out) >= max_count:
             break
     return out
+
+
+def extract_frontiers_from_trends(trends: list[Any], max_count: int = 8) -> list[RawFrontier]:
+    out: list[RawFrontier] = []
+    seen: set[str] = set()
+    for item in trends or []:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        m = _BOLD_RE.search(text)
+        if m:
+            name = m.group(1).strip()
+            desc = text.replace(m.group(0), "", 1).strip(" :-：")
+        else:
+            parts = re.split(r"[:：。；;]\s*", text, maxsplit=1)
+            name = re.sub(r"^\s*\d+[.、]\s*", "", parts[0]).strip()
+            desc = parts[1].strip() if len(parts) > 1 else text
+        key = name.lower()
+        if not name or key in seen or key in _FRONTIER_NAME_BLACKLIST:
+            continue
+        seen.add(key)
+        out.append(RawFrontier(name=name[:50], description=desc[:300]))
+        if len(out) >= max_count:
+            break
+    return out
+
+
+_MD_LINK_RE = re.compile(r"\[([^\]\n]{2,120})\]\((https?://[^\s\)）]+)\)")
+_BARE_URL_RE = re.compile(r"https?://[^\s\]\)）>]+")
+
+
+def _resource_type(url: str, label: str = "") -> str:
+    text = f"{url} {label}".lower()
+    if "github.com" in text:
+        return "github_repo"
+    if "huggingface.co" in text:
+        return "model_or_space"
+    if "paperswithcode.com" in text:
+        return "leaderboard"
+    if "arxiv.org" in text or "doi.org" in text:
+        return "paper"
+    if any(k in text for k in ("dataset", "data", "librispeech", "commonvoice", "kaggle")):
+        return "dataset"
+    return "resource"
+
+
+def extract_resources_from_text(*texts: str, max_count: int = 30) -> list[RawResource]:
+    """Extract clickable paper/project/resource links from markdown reports."""
+
+    out: list[RawResource] = []
+    seen: set[str] = set()
+    joined = "\n".join(t or "" for t in texts)
+
+    def add(label: str, url: str, line: str = "") -> None:
+        clean = _clean_url(url)
+        if not clean or clean in seen:
+            return
+        seen.add(clean)
+        name = (label or clean.rstrip("/").split("/")[-1] or clean).strip()
+        out.append(
+            RawResource(
+                name=name[:120],
+                type=_resource_type(clean, name),
+                url=clean,
+                description=line.strip()[:240],
+            )
+        )
+
+    for line in joined.splitlines():
+        for label, url in _MD_LINK_RE.findall(line):
+            add(label, url, line)
+        without_md = _MD_LINK_RE.sub("", line)
+        for url in _BARE_URL_RE.findall(without_md):
+            add("", url, line)
+        if len(out) >= max_count:
+            break
+
+    return out[:max_count]
