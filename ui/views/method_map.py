@@ -36,18 +36,23 @@ def _build_dot(topic: str, methods) -> str:
 def render(data: VisualizationData) -> None:
     st.subheader("Method Map")
 
-    if not data.methods:
+    complete_methods = [
+        method for method in data.methods
+        if method.description and method.papers
+    ]
+
+    if not complete_methods:
         st.info("No methods in the current data.")
         return
 
-    dot = _build_dot(data.topic, data.methods)
+    dot = _build_dot(data.topic, complete_methods)
     st.graphviz_chart(dot, use_container_width=True)
 
     paper_lookup = {p.id: p for p in data.papers}
-    resources_by_method: dict[str, list] = {}
+    resources_by_paper: dict[str, list] = {}
     for resource in data.resources:
-        for method_id in resource.related_methods:
-            resources_by_method.setdefault(method_id, []).append(resource)
+        for paper_id in resource.related_papers:
+            resources_by_paper.setdefault(paper_id, []).append(resource)
 
     st.markdown("#### Method Details")
     rows = [
@@ -55,23 +60,31 @@ def render(data: VisualizationData) -> None:
             "name": m.name,
             "category": m.category,
             "description": m.description,
-            "pros": "; ".join(m.pros),
-            "cons": "; ".join(m.cons),
+            "pros": "\n".join(f"- {item}" for item in m.pros),
+            "cons": "\n".join(f"- {item}" for item in m.cons),
             "papers": len(m.papers),
         }
-        for m in data.methods
+        for m in complete_methods
     ]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    for method in data.methods:
-        if not method.papers and not resources_by_method.get(method.id):
-            continue
+    for method in complete_methods:
         with st.expander(f"Links for {method.name or method.id}"):
+            st.markdown("##### Representative Papers")
+            has_paper_link = False
             for pid in method.papers:
                 paper = paper_lookup.get(pid)
                 if paper and paper.url:
-                    st.markdown(f"- Paper: [{paper.title}]({paper.url})")
+                    has_paper_link = True
+                    st.markdown(f"- [{paper.title}]({paper.url})")
                 elif paper:
-                    st.markdown(f"- Paper: {paper.title}")
-            for resource in resources_by_method.get(method.id, []):
-                st.markdown(f"- {resource.type}: [{resource.name}]({resource.url})")
+                    resource = next((r for r in resources_by_paper.get(pid, []) if r.url), None)
+                    if resource:
+                        has_paper_link = True
+                        st.markdown(f"- [{paper.title}]({resource.url})")
+                    else:
+                        st.markdown(f"- {paper.title}")
+            if not has_paper_link:
+                st.caption("No linked representative papers yet.")
+            st.divider()
+            st.caption("All literature links are also collected on the Links tab.")

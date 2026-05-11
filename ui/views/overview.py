@@ -34,8 +34,17 @@ def render(data: VisualizationData) -> None:
     with right:
         st.markdown("#### Key Concepts")
         if data.overview.key_concepts:
-            chips = " ".join(f"`{c}`" for c in data.overview.key_concepts)
-            st.markdown(chips)
+            selected = st.radio(
+                "Key concept",
+                options=data.overview.key_concepts,
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+            explanation = data.overview.key_concept_explanations.get(selected, "")
+            if explanation:
+                st.write(explanation)
+            else:
+                st.caption("No explanation available yet.")
         else:
             st.caption("No key concepts yet.")
 
@@ -58,17 +67,3 @@ def render(data: VisualizationData) -> None:
                     st.write(paper.summary)
                 if paper.url:
                     st.link_button("Open paper", paper.url)
-
-    st.divider()
-    st.markdown("#### Papers, Code, and Open Resources")
-    if not data.resources:
-        st.caption("No paper/project links were extracted yet.")
-        return
-
-    for resource in data.resources:
-        label = resource.name or resource.url
-        with st.container(border=True):
-            st.markdown(f"**[{label}]({resource.url})**")
-            st.caption(resource.type)
-            if resource.description:
-                st.write(resource.description)

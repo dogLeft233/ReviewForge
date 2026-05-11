@@ -38,6 +38,7 @@ class Overview(BaseModel):
     definition: str = ""
     core_questions: list[str] = Field(default_factory=list)
     key_concepts: list[str] = Field(default_factory=list)
+    key_concept_explanations: dict[str, str] = Field(default_factory=dict)
 
 
 class TimelineEvent(BaseModel):
@@ -75,6 +76,7 @@ class Benchmark(BaseModel):
     score: float = 0.0
     year: int = 0
     url: str = ""
+    description: str = ""
 
 
 class Frontier(BaseModel):

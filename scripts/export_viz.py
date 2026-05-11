@@ -57,15 +57,77 @@ def _convert(
     else:
         viz = convert_with_llm(raw) if use_llm else convert(raw)
 
+    if use_openai_enhance and not _openai_enhancement_effective(viz):
+        raise RuntimeError(
+            "OpenAI enhancement returned no useful patch. "
+            "No visualization_data.json was written; rerun without --openai-enhance "
+            "for raw export, or check adapter_enhance.yaml/API response."
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(viz.model_dump_json(indent=2), encoding="utf-8")
+    quality = viz.quality_report or {}
+    enhancement_note = ""
+    if use_openai_enhance:
+        score = quality.get("overall_score")
+        if quality:
+            enhancement_note = f" | openai_quality={score}"
+        else:
+            enhancement_note = " | openai_quality=unavailable"
     print(
         f"[OK] {input_path.name} -> {output_path}\n"
         f"     topic={viz.topic} | timeline={len(viz.timeline)} methods={len(viz.methods)} "
         f"papers={len(viz.papers)} benchmarks={len(viz.benchmarks)} "
         f"frontiers={len(viz.frontiers)} resources={len(viz.resources)} "
         f"| nodes={len(viz.graph.nodes)} edges={len(viz.graph.edges)} "
-        f"| needs_research={len(viz.needs_research)}"
+        f"| needs_research={len(viz.needs_research)}{enhancement_note}"
     )
+
+
+def _openai_enhancement_effective(viz) -> bool:
+    quality = viz.quality_report or {}
+    has_concept_explanations = bool(viz.overview.key_concept_explanations)
+    has_no_broad_timeline = not any("Attention Is All You Need" == e.title for e in viz.timeline)
+    has_benchmark_catalog = bool(viz.benchmarks) and all(
+        b.url and b.description and not b.score and not b.year for b in viz.benchmarks
+    )
+    return (
+        bool(quality.get("overall_score", 0))
+        and has_concept_explanations
+        and has_no_broad_timeline
+        and has_benchmark_catalog
+    )
+
+
+def _resolve_input_path(value: str) -> Path:
+    path = Path(value)
+    candidates = [
+        path,
+        _PROJECT_ROOT / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return path
+
+
+def _resolve_topic_dir(value: str) -> Path:
+    """Accept either tmp/<topic>, an absolute dir, or just <topic>."""
+
+    path = Path(value)
+    candidates = [
+        path,
+        _PROJECT_ROOT / path,
+        _PROJECT_ROOT / "tmp" / value,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    # If the user passed a bare topic name, prefer the documented tmp/<topic>
+    # location even before it exists so the skip message points at the right path.
+    if len(path.parts) == 1:
+        return _PROJECT_ROOT / "tmp" / value
+    return path
 
 
 def main() -> None:
@@ -81,8 +143,8 @@ def main() -> None:
     use_llm = not args.no_llm
 
     if args.input:
-        in_path = Path(args.input)
-        out_path = Path(args.output or in_path.parent / "visualization_data.json")
+        in_path = _resolve_input_path(args.input)
+        out_path = Path(args.output) if args.output else in_path.parent / "visualization_data.json"
         _convert(
             in_path,
             out_path,
@@ -93,7 +155,7 @@ def main() -> None:
         return
 
     if args.dir:
-        dirs = [Path(args.dir)]
+        dirs = [_resolve_topic_dir(args.dir)]
     else:
         tmp_root = _PROJECT_ROOT / "tmp"
         dirs = [d for d in tmp_root.iterdir() if d.is_dir()] if tmp_root.exists() else []
@@ -101,13 +163,15 @@ def main() -> None:
     if not dirs:
         print("No processable tmp directories found.")
         return
+    if args.output and len(dirs) != 1:
+        raise SystemExit("--output can only be used with --input or a single topic directory.")
 
     for d in dirs:
         in_path = d / "step3_writer_done.json"
         if not in_path.exists():
             print(f"[SKIP] {d} (no step3_writer_done.json)")
             continue
-        out_path = d / "visualization_data.json"
+        out_path = Path(args.output) if args.output else d / "visualization_data.json"
         try:
             _convert(
                 in_path,

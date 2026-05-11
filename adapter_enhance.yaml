@@ -1,0 +1,34 @@
+# Adapter report-quality enhancement.
+# This stage is optional. It calls OpenAI Responses API with web search to
+# critique and enhance the current visualization report.
+
+enabled: true
+
+openai:
+  api_key: "sk-BU9XmGxtcO5YzYE3tfLdDgS9CW2RGPGtxdxdKtuEEhJPjWUF"
+  base_url: "https://www.dmxapi.cn/v1"
+  model: "gpt-4o"
+  timeout_seconds: 120
+  max_output_tokens: 5000
+  temperature: 0.1
+
+web_search:
+  enabled: true
+  # For gpt-4o, keep this configurable. If your account/model supports the
+  # generally available tool, use "web_search"; otherwise try "web_search_preview".
+  tool_type: "web_search_preview"
+  allowed_domains: []
+
+enhancement:
+  # Keep API cost bounded by limiting what we send to the model.
+  max_raw_chars: 12000
+  max_viz_chars: 20000
+  # The enhancer is allowed to improve language and add source-backed links.
+  # It must not invent authors, years, URLs, or benchmark scores.
+  allow_fact_field_updates: false
+
+debug:
+  # Print the Responses request payload and raw response body for troubleshooting.
+  # Authorization headers and API keys are never printed.
+  enabled: false
+  max_chars: 12000
