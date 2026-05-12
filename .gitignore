@@ -41,5 +41,7 @@ docs/
 OVERVIEW.md
 .llm_cache/
 -e 
-# ReviewForge
-tmp/
+# ReviewForge local outputs
+tmp/*
+!tmp/ASR自动语音识别/
+!tmp/ASR自动语音识别/**
