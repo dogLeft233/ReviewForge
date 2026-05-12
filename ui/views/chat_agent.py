@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from typing import Protocol, runtime_checkable
 
 import streamlit as st
@@ -92,6 +95,10 @@ def render(data: VisualizationData) -> None:
     if "session_id" not in st.session_state:
         st.session_state["session_id"] = __import__("uuid").uuid4().hex[:8]
 
+    # 初始化异步任务列表
+    if "pending_tasks" not in st.session_state:
+        st.session_state["pending_tasks"] = []
+
     # 初始化消息历史
     if "chat_messages" not in st.session_state:
         st.session_state["chat_messages"]: list[dict[str, str]] = []
@@ -123,8 +130,82 @@ def render(data: VisualizationData) -> None:
                     answer_placeholder.markdown(full_response + "▌")
                 # 最终输出（去掉打字光标）
                 answer_placeholder.markdown(full_response)
+
+                # 检测异步任务响应，注册到 pending_tasks
+                import re
+                if "⏳ 领域探索任务已启动" in full_response:
+                    match = re.search(r"topic:\s*([^（）]+)", full_response)
+                    topic = match.group(1).strip() if match else prompt
+                    st.session_state["pending_tasks"].append({
+                        "type": "run_explorer_async",
+                        "topic": topic,
+                        "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+                elif "⏳ BFS 搜索任务已启动" in full_response:
+                    match = re.search(r"question:\s*([^（）]+)", full_response)
+                    topic = match.group(1).strip() if match else prompt
+                    st.session_state["pending_tasks"].append({
+                        "type": "bfs_search_async",
+                        "topic": topic,
+                        "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    })
             except Exception as e:
                 st.error(f"Agent 调用失败：{e}")
 
         # 将助手回答加入历史
         st.session_state["chat_messages"].append({"role": "assistant", "content": full_response})
+
+        # ── 异步任务状态轮询 ──────────────────────────────────────────────────────
+        pending = st.session_state.get("pending_tasks", [])
+        if pending:
+            st.divider()
+            st.subheader("📋 后台任务状态")
+
+            still_pending = []
+            for task in pending:
+                topic = task["topic"]
+                task_dir = f"tmp/{topic}"
+                status_file = f"{task_dir}/task_status.json"
+
+                if os.path.exists(status_file):
+                    with open(status_file, encoding="utf-8") as f:
+                        status = json.load(f)
+
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.info(f"**{status.get('message', '处理中...')}**")
+                        st.progress(status.get("progress", 0), text=f"进度 {int(status.get('progress', 0)*100)}%")
+                    with col2:
+                        st.caption(f"⏱ {status.get('started_at', '')}")
+
+                    if status.get("status") == "completed":
+                        st.success(f"✅ 完成！正在加载结果到 UI...")
+                        _load_task_result(task)
+                    elif status.get("status") == "failed":
+                        st.error(f"❌ 失败: {status.get('message', '未知错误')}")
+                    else:
+                        still_pending.append(task)
+                else:
+                    st.info(f"⏳ 任务初始化中: {topic}")
+                    still_pending.append(task)
+
+            st.session_state["pending_tasks"] = still_pending
+
+
+def _load_task_result(task: dict) -> None:
+    """加载任务结果到 session_state（供其他 Tab 使用）"""
+    topic = task["topic"]
+    if task["type"] == "run_explorer_async":
+        result_file = f"tmp/{topic}/step1_explorer_done.json"
+        if os.path.exists(result_file):
+            with open(result_file, encoding="utf-8") as f:
+                data = json.load(f)
+            st.session_state["visualization_data"] = data
+            st.rerun()
+    elif task["type"] == "bfs_search_async":
+        result_file = f"tmp/{topic}/step2_searcher_done.json"
+        if os.path.exists(result_file):
+            with open(result_file, encoding="utf-8") as f:
+                data = json.load(f)
+            st.session_state["bfs_search_data"] = data
+            st.rerun()

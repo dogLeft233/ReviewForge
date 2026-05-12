@@ -297,7 +297,10 @@ class ChatAgent:
 
     def _default_system_prompt(self) -> str:
         return """你是一个学术研究领域的 AI 助手，专注于帮助用户探索和理解学术论文、方法和趋势。
-你可以使用 web_search 搜索最新信息，使用 web_fetch 获取网页详情。
+你可以使用以下工具：
+- web_search: 搜索最新信息，用于实时查询
+- web_fetch: 获取网页详情
+- explorer_overview: 探索给定学术领域的概况、核心问题和主流方法。当用户询问某个领域的基本介绍、发展历史、核心概念时使用。
 回答时结合搜索结果和已有知识，提供准确、有条理的回答。
 始终用中文回答，除非用户用英文提问。"""
 
@@ -366,6 +369,7 @@ class ChatAgent:
         response, _ = self._llm._llm.chat_with_tools(
             messages=msgs_for_llm,
             tools=self._get_tools_spec(),
+            max_turns=3,
         )
 
         # 更新 Memory
@@ -409,6 +413,94 @@ class ChatAgent:
                             "timeout": {"type": "number", "description": "Timeout in seconds", "default": 30.0},
                         },
                         "required": ["url"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "explorer_overview",
+                    "description": "探索给定学术领域的概况、核心问题和主流方法。当用户询问某个领域的基本介绍、发展历史、核心概念时使用。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {"type": "string", "description": "要探索的学术领域或主题"},
+                        },
+                        "required": ["topic"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_explorer",
+                    "description": "执行领域探索，获取研究领域的基本概况、核心概念、经典论文和 Benchmark。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {"type": "string", "description": "要探索的研究领域或主题"},
+                        },
+                        "required": ["topic"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_explorer_async",
+                    "description": "异步执行领域探索，立即返回任务ID，后台执行不阻塞，阶段进度实时更新，完成自动写入 step1_explorer_done.json 供其他 Tab 加载。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {"type": "string", "description": "要探索的研究领域或主题"},
+                        },
+                        "required": ["topic"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "bfs_search",
+                    "description": "深度论文发现工具，使用 BFS（广度优先搜索）发现某领域的所有重要论文及其引用关系。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "研究问题或主题"},
+                            "expand_layers": {"type": "integer", "description": "BFS 扩展层数，0=只用搜索不扩展引文，1=搜索+一层引文，2=两层（默认2）", "default": 2},
+                            "search_papers_count": {"type": "integer", "description": "每个搜索词取多少篇论文", "default": 20},
+                        },
+                        "required": ["question"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "bfs_search_async",
+                    "description": "异步执行 BFS 深度论文发现，立即返回任务ID，后台执行不阻塞，完成自动写入 step2_searcher_done.json 供其他 Tab 加载。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "研究问题或主题"},
+                            "expand_layers": {"type": "integer", "description": "BFS 扩展层数，0=只用搜索，1=一层引文，2=两层（默认2）", "default": 2},
+                            "search_papers_count": {"type": "integer", "description": "每个搜索词取多少篇论文", "default": 20},
+                        },
+                        "required": ["question"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "multi_source_search",
+                    "description": "多源检索工具，同时搜索 GitHub（项目）、HuggingFace（模型+数据集）和 arXiv（论文）。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "研究问题或技术主题"},
+                        },
+                        "required": ["question"],
                     },
                 },
             },

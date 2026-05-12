@@ -291,30 +291,164 @@ class ExplorerAgent:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _extract_concepts(self, text: str) -> list[str]:
+        """从 LLM 输出文本中提取核心概念术语列表"""
         import re
+
         concepts = []
+        in_concept_section = False
+        in_problem_section = False
+
         for line in text.split("\n"):
-            m = re.match(r"^\s*[-*•]\s*(.+?)(?:：|:)\s*(.+)", line)
+            line = line.strip()
+            if not line:
+                continue
+
+            # 专区检测（elif 链，互斥匹配）
+            concept_m = re.match(r"##\s*核心概念|###\s*核心概念|##\s*关键术语|###\s*关键术语", line)
+            problem_m = re.match(r"##\s*核心问题|###\s*核心问题", line)
+            # 仅匹配 ## 开头的标题行，不匹配普通中文内容行
+            section_m = re.match(r"^#{1,6}\s+\S", line)
+
+            if concept_m:
+                in_concept_section = True
+                in_problem_section = False
+                continue
+            elif problem_m:
+                in_problem_section = True
+                in_concept_section = False
+                continue
+            elif section_m:
+                # 遇到新专区标题，清除专区状态
+                in_concept_section = False
+                in_problem_section = False
+                continue
+
+            if in_problem_section:
+                continue
+
+            # 冒号分隔：找第一个冒号，左边 term，右边 definition
+            colon_idx = -1
+            defn = ""
+            for idx in range(len(line)):
+                c = line[idx]
+                if c == "：" or c == ":":
+                    colon_idx = idx
+                    defn = line[idx + 1:].strip()
+                    break
+
+            if colon_idx > 0 and defn:
+                term = line[:colon_idx].strip()
+                # 如果 term 末尾有多余 ）（且没有配对的 （ ），去掉
+                if term.endswith("）") and "（" not in term:
+                    term = term[:-1].strip()
+                if term and len(defn) > 1 and len(term) > 1:
+                    concepts.append(f"{term}：{defn}")
+                    continue
+
+            # **术语**: 解释 格式
+            m = re.match(r"^[-*•\d]+\.?\s*\*\*(.+?)\*\*\s*[:-]\s*(.+)", line)
             if m:
-                concepts.append(f"{m.group(1).strip()}: {m.group(2).strip()}")
-            elif re.match(r"^\s*[-*•]\s*[\u4e00-\u9fa5a-zA-Z]", line):
-                concepts.append(line.lstrip("-*• ").strip())
-        return concepts[:10]
+                term = m.group(1).strip()
+                defn = m.group(2).strip()
+                if term and defn and len(term) > 1:
+                    concepts.append(f"{term}：{defn}")
+                    continue
+
+            # 无分隔符纯列表行（仅限核心概念专区）
+            if in_concept_section and re.match(r"^[-*•\d]+\.?\s*[\u4e00-＀]", line):
+                clean = re.sub(r"^[-*•\d]+\.?\s*", "", line)
+                if clean and len(clean) > 2 and len(clean) < 60:
+                    concepts.append(clean)
+
+        # 去重保持顺序
+        seen = set()
+        deduped = []
+        for c in concepts:
+            if c not in seen:
+                seen.add(c)
+                deduped.append(c)
+
+        return deduped[:10]
 
     def _parse_classics(self, text: str) -> list[ClassicWork]:
+        """从 LLM 输出文本中提取经典论文列表"""
         import re
+
         classics: list[ClassicWork] = []
+
+        # 先去掉 HTML 标签
+        text = re.sub(r"<[^>]+>", "", text)
+
         for line in text.split("\n"):
-            m = re.search(
-                r"\*\*(.+?)\*\*.*?\((\d{4})\)|(.+?)\s*\((\d{4})\)|(\d{4}).*?[-–]\s*(.+)",
-                line,
-            )
-            if m:
-                title = m.group(1) or m.group(3) or m.group(6)
-                year_str = m.group(2) or m.group(4)
-                year = int(year_str) if year_str else 0
-                if title and year:
-                    classics.append(ClassicWork(title=title.strip(), year=year))
+            line = line.strip()
+            if not line or len(line) < 10:
+                continue
+
+            # 跳过标题、分隔符、无效行
+            if re.match(r"^[#\u4e00-＀]", line):
+                continue
+            if re.match(r"^(经典|论文|title|author|venue|时间线)", line, re.IGNORECASE):
+                continue
+            if not re.search(r"\d{4}", line):
+                continue
+
+            title = ""
+            year = 0
+
+            # 格式1：**Title** | YYYY | ... （管道符分隔，最常见）
+            if not title:
+                parts = [p.strip() for p in line.split("|")]
+                for i, p in enumerate(parts):
+                    ym = re.search(r"(\d{4})", p)
+                    if ym:
+                        yc = int(ym.group(1))
+                        if 1990 <= yc <= 2026:
+                            year = yc
+                            if i > 0:
+                                # 取第一段为 title（去掉开头的序号）
+                                raw_title = parts[0].strip()
+                                title = re.sub(r"^[\d]+\.?\s*", "", raw_title).strip()
+                            break
+
+            # 格式2：**Title** (YYYY) 无管道符
+            if not title:
+                m = re.search(r"\*\*(.+?)\*\*\s*\((\d{4})\)", line)
+                if m:
+                    title = m.group(1).strip()
+                    year = int(m.group(2))
+
+            # 格式3：Title (YYYY) 无 **
+            if not title:
+                m = re.match(r"^(.+?)\s*\((\d{4})\)", line)
+                if m:
+                    title = m.group(1).strip()
+                    year = int(m.group(2))
+
+
+            # 格式4：- Title, YYYY
+            if not title:
+                m = re.match(r"^[>-]?\s*-\s*(.+?),\s*(\d{4})", line)
+                if m:
+                    title = m.group(1).strip()
+                    year = int(m.group(2))
+
+            # 格式5：- YYYY. Title —
+            if not title:
+                m = re.match(r"^[>-]?\s*-\s*(\d{4})\.?\s+(.+?)(?:—|-|$)", line)
+                if m:
+                    year = int(m.group(1))
+                    title = m.group(2).strip()
+
+            # 清理标题
+            title = re.sub(r"^[\-*•\s]+", "", title).strip()
+            title = re.sub(r"\s*[/\\|]\s*.*$", "", title).strip()
+            title = re.sub(r"\*+", "", title).strip()
+
+
+            if title and 5 <= len(title) <= 200 and year:
+                classics.append(ClassicWork(title=title, year=year))
+
+
         return classics[:20]
 
     def _extract_timeline(self, text: str) -> str:

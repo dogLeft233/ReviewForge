@@ -33,6 +33,7 @@ class WriterConfig:
     model: str = "Qwen/Qwen3-8B"
     temperature: float = 0.2
     max_tokens: int = 4096
+    body_max_tokens: int = 2000
     timeout_seconds: float = 300.0
 
 
@@ -127,17 +128,17 @@ class WriterAgent:
         """
         system = _load_prompt("planning_system.txt").format(
             topic=topic,
-            overview=(er.stage1_overview or er.stage1_search_results or "")[:4000],
+            overview=(er.stage1_overview or er.stage1_search_results or "")[:2000],
             classics="\n".join(
                 f"- **{c.title}** ({c.year}): {c.key_idea or '请补充核心贡献'}"
-                for c in er.stage2_classics[:15]
+                for c in er.stage2_classics[:10]
             ),
-            sota=(er.stage3_state_of_art or "")[:2000],
+            sota=(er.stage3_state_of_art or "")[:1000],
             trends=(
                 er.stage3_trends
                 if isinstance(er.stage3_trends, str)
                 else "\n".join(er.stage3_trends or [])
-            )[:1000],
+            )[:500],
         )
         user = _load_prompt("planning_user.txt").format(topic=topic)
 
@@ -150,7 +151,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作规划专家，请生成结构化的全局写作计划。",
             messages=messages,
             temperature=0.4,
-            max_tokens=1500,
+            max_tokens=800,
         )
 
         # 解析候选标题
@@ -228,7 +229,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，精通中文期刊标题命名。",
             messages=messages,
             temperature=0.3,
-            max_tokens=80,
+            max_tokens=600,
         )
 
     def _write_introduction(
@@ -257,7 +258,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请撰写规范的引言章节。",
             messages=messages,
             temperature=self.config.temperature,
-            max_tokens=1500,
+            max_tokens=800,
         )
 
     def _write_body(
@@ -314,7 +315,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请撰写综述的核心章节。",
             messages=messages,
             temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
+            max_tokens=self.config.body_max_tokens,
         )
 
     def _write_conclusion(
@@ -353,7 +354,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请撰写结论章节。",
             messages=messages,
             temperature=self.config.temperature,
-            max_tokens=800,
+            max_tokens=600,
         )
 
     def _collect_references(
@@ -382,7 +383,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请按《计算机学报》格式整理参考文献。",
             messages=messages,
             temperature=0.2,
-            max_tokens=1500,
+            max_tokens=300,
         )
 
     def _write_abstract(
@@ -420,7 +421,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请按《计算机学报》摘要规范撰写。",
             messages=messages,
             temperature=0.2,
-            max_tokens=500,
+            max_tokens=60,
         )
 
     def _extract_keywords(
@@ -443,7 +444,7 @@ class WriterAgent:
             external_prompt="你是一名学术写作专家，请提取5-7个关键词。",
             messages=messages,
             temperature=0.2,
-            max_tokens=100,
+            max_tokens=50,
         )
 
         keywords = []

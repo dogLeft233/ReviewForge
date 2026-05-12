@@ -29,6 +29,7 @@ class LLMConfig:
     timeout_seconds: float = 120.0
     max_retries: int = 2
     max_concurrency: int = 4  # 全局 LLM 并发上限
+    thinking: str | None = None  # "low" | "medium" | "high" | "none" | None
 
 
 # ──────────────────────────────────────────────────────────────
@@ -59,6 +60,22 @@ web_fetch(url: str, *, max_chars: int = 5000, timeout: float = 30.0) -> WebFetch
 - **max_chars**: 正文最大字符数（默认 5000，避免 context 溢出）
 - **timeout**: 请求超时（秒）
 - **返回**: `WebFetchResult`，含 `title` / `content`（提取正文） / `status_code`
+
+### explorer_overview — 领域探索第一阶段
+```
+explorer_overview(topic: str) -> dict[str, Any]
+```
+- **topic**: 要探索的学术领域或主题
+- **返回**: `{overview: str, concepts: list[str], topic: str}`
+- 用于当用户询问某领域的基本介绍、发展历史、核心概念时调用
+
+### run_explorer — 完整领域探索（Stage 1+2+3）
+```
+run_explorer(topic: str) -> str
+```
+- **topic**: 要探索的研究领域或主题
+- **返回**: Markdown 格式的完整探索报告，包含领域概况、经典论文和 Benchmark
+- 执行完整的三阶段探索（比 explorer_overview 更全面，但耗时更长）
 
 ## 调用规范
 
@@ -168,6 +185,7 @@ class LLM:
         timeout_seconds: float = 120.0,
         max_retries: int = 2,
         max_concurrency: int = 4,
+        thinking: str | None = None,  # 思考深度控制
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
@@ -181,6 +199,7 @@ class LLM:
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
             max_concurrency=max_concurrency,
+            thinking=thinking,
         )
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -199,6 +218,7 @@ class LLM:
         system_prompt: str = "",
         temperature: float | None = None,
         max_tokens: int | None = None,
+        thinking: str | None = None,  # 思考深度控制
     ) -> str:
         """发送对话请求，返回模型文本回复
 
@@ -221,6 +241,7 @@ class LLM:
             external_prompt=external_prompt,
             messages=messages,
             system_prompt=system_prompt,
+            thinking=thinking,
         )
 
         for attempt in range(1, self._cfg.max_retries + 1):
@@ -263,20 +284,211 @@ class LLM:
         system_prompt: str = "",
         temperature: float | None = None,
         max_tokens: int | None = None,
+        max_turns: int = 5,
     ) -> tuple[str, list[ToolCallResult]]:
-        """对话 + 工具调用（future 支持，当前版本等效 chat）
+        """对话 + 工具调用（支持多轮 tool calling）
 
-        当前实现：返回 chat 结果和空工具列表。
-        工具调用框架待接入。
+        实现 ReAct 循环：LLM 返回 tool_calls 时实际执行，并将结果注入下一轮对话。
+        达到 max_turns 限制时停止。
+
+        参数:
+            external_prompt: 外部传入的初始 prompt
+            messages: 对话历史
+            tools: 工具规格列表（OpenAI function calling 格式）
+            system_prompt: 额外系统 prompt
+            temperature: 采样温度
+            max_tokens: 最大 token 数
+            max_turns: 最大工具调用轮数（防止无限循环）
+
+        返回:
+            (最终回复文本, 已执行的工具调用结果列表)
         """
-        reply = self.chat(
-            external_prompt=external_prompt,
-            messages=messages,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return reply, []
+        import json
+
+        # 构建初始消息列表
+        all_messages: list[dict[str, Any]] = []
+        if external_prompt:
+            all_messages.append({"role": "system", "content": external_prompt})
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        if messages:
+            for msg in messages:
+                all_messages.append({"role": msg.role, "content": msg.content})
+
+        effective_temp = temperature if temperature is not None else self._cfg.temperature
+        effective_max_tokens = max_tokens if max_tokens is not None else self._cfg.max_tokens
+
+        turn = 0
+        tool_results: list[ToolCallResult] = []
+
+        while turn < max_turns:
+            turn += 1
+
+            # 构建请求 payload
+            payload: dict[str, Any] = {
+                "model": self._cfg.model,
+                "messages": all_messages,
+                "temperature": effective_temp,
+                "max_tokens": effective_max_tokens,
+            }
+            if tools:
+                payload["tools"] = tools
+
+            url = f"{self._base_url}/chat/completions"
+
+            # 发送请求
+            t0 = time.perf_counter()
+            response_text = self._send_request(payload, url, self._cfg.timeout_seconds)
+            elapsed = time.perf_counter() - t0
+            logger.info("[LLM] chat_with_tools turn %d done in %.2fs", turn, elapsed)
+
+            # 解析 tool_calls
+            parsed = self._parse_tool_calls_from_response(response_text)
+
+            if not parsed:
+                # 没有工具调用，直接返回
+                return response_text, tool_results
+
+            # 执行工具调用
+            for tc in parsed:
+                tool_name = tc["function"]["name"]
+                arguments = tc["function"]["arguments"]
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+                logger.info("[Tool Call] %s(%s)", tool_name, arguments)
+
+                tool_result_str = self._execute_tool(tool_name, arguments)
+                tool_results.append(
+                    ToolCallResult(
+                        tool_name=tool_name,
+                        args=arguments,
+                        raw_result=tool_result_str,
+                    )
+                )
+
+                # 将 LLM 回复（含 function_call）追加到 messages
+                all_messages.append({"role": "assistant", "content": response_text})
+                # 将工具结果追加为 tool 消息
+                all_messages.append({
+                    "role": "tool",
+                    "content": tool_result_str,
+                    "tool_call_id": tc.get("id", ""),
+                })
+
+        # 达到最大轮次，返回最后结果
+        logger.warning("[LLM] max_turns (%d) reached, returning last response", max_turns)
+        return response_text, tool_results
+
+    def _parse_tool_calls_from_response(self, response_text: str) -> list[dict[str, Any]]:
+        """从 LLM 响应文本中解析 tool_calls（JSON 块）"""
+        import json
+        import re
+
+        # 尝试从响应中提取 ```json ... ``` 块
+        json_blocks = re.findall(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+        if not json_blocks:
+            # 尝试直接解析整个响应
+            try:
+                data = json.loads(response_text)
+                if isinstance(data, dict) and "tool_calls" in data:
+                    return data["tool_calls"]
+            except json.JSONDecodeError:
+                pass
+            return []
+
+        for block in json_blocks:
+            try:
+                data = json.loads(block)
+                if isinstance(data, dict) and "tool_calls" in data:
+                    return data["tool_calls"]
+            except json.JSONDecodeError:
+                continue
+        return []
+
+    def _execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
+        """根据工具名执行对应工具，返回格式化的结果字符串"""
+        import json
+
+        if tool_name == "web_search":
+            from src.tools.web_search import web_search as ws
+            results = ws(
+                query=arguments["query"],
+                count=arguments.get("count", 10),
+                freshness=arguments.get("freshness"),
+            )
+            if not results:
+                return "No results found."
+            lines = []
+            for r in results:
+                lines.append(f"- **{r.title}** ({r.site_name or 'unknown'})")
+                lines.append(f"  URL: {r.url}")
+                if r.description:
+                    lines.append(f"  Summary: {r.description}")
+                lines.append("")
+            return "\n".join(lines)
+
+        elif tool_name == "web_fetch":
+            from src.tools.web_fetch import web_fetch as wf
+            try:
+                result = wf(
+                    url=arguments["url"],
+                    max_chars=arguments.get("max_chars", 5000),
+                    timeout=arguments.get("timeout", 30.0),
+                )
+                if result.status_code != 200:
+                    return f"Failed to fetch {arguments['url']}: status {result.status_code}"
+                return f"Title: {result.title or arguments['url']}\nContent: {result.content[:3000]}"
+            except Exception as e:
+                return f"Failed to fetch {arguments['url']}: {type(e).__name__}: {e}"
+
+        elif tool_name == "explorer_overview":
+            from src.explorer import ExplorerAgent
+            explorer = ExplorerAgent(llm=self)
+            result = explorer._run_stage1(arguments["topic"])
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+        elif tool_name == "run_explorer":
+            from src.agent.skills.core_skill import _run_explorer
+            return _run_explorer(topic=arguments["topic"])
+
+        elif tool_name == "run_explorer_async":
+            import threading
+            from src.agent.skills.core_skill import _run_explorer_async
+            topic = arguments["topic"]
+            thread = threading.Thread(target=_run_explorer_async, kwargs={"topic": topic})
+            thread.daemon = True
+            thread.start()
+            return f"⏳ 领域探索任务已启动（topic: {topic}），UI 将自动更新进度..."
+
+        elif tool_name == "bfs_search":
+            from src.agent.skills.bfs_search_skill import _bfs_search
+            return _bfs_search(
+                question=arguments["question"],
+                expand_layers=arguments.get("expand_layers", 2),
+                search_papers_count=arguments.get("search_papers_count", 20),
+            )
+
+        elif tool_name == "bfs_search_async":
+            import threading
+            from src.agent.skills.bfs_search_skill import _bfs_search_async
+            thread = threading.Thread(
+                target=_bfs_search_async,
+                kwargs={
+                    "question": arguments["question"],
+                    "expand_layers": arguments.get("expand_layers", 2),
+                    "search_papers_count": arguments.get("search_papers_count", 20),
+                }
+            )
+            thread.daemon = True
+            thread.start()
+            return f"⏳ BFS 搜索任务已启动（question: {arguments['question']}），UI 将自动更新进度..."
+
+        elif tool_name == "multi_source_search":
+            from src.agent.skills.multi_source_searcher_skill import _multi_source_search
+            return _multi_source_search(question=arguments["question"])
+
+        else:
+            return f"Unknown tool: {tool_name}"
 
     # ── 构建请求 ─────────────────────────────────────────────
 
@@ -285,6 +497,7 @@ class LLM:
         external_prompt: str,
         messages: list[Message] | None,
         system_prompt: str,
+        thinking: str | None = None,
     ) -> tuple[dict[str, Any], str]:
         """拼接 system prompt（含工具说明）+ 用户消息，返回 payload 和 URL"""
 
@@ -314,6 +527,11 @@ class LLM:
             "temperature": self._cfg.temperature,
             "max_tokens": self._cfg.max_tokens,
         }
+
+        # 思考深度控制：优先使用调用时传入的值，其次使用配置默认值
+        effective_thinking = thinking if thinking is not None else self._cfg.thinking
+        if effective_thinking is not None:
+            payload["thinking"] = effective_thinking
 
         logger.debug("[LLM] Request payload: model=%s, messages_count=%d, temp=%.2f",
                      self._cfg.model, len(all_messages), self._cfg.temperature)
@@ -347,7 +565,13 @@ class LLM:
                 choices = data.get("choices", [])
                 if not choices:
                     raise APIError(status_code=200, detail="No choices in response")
-                return choices[0]["message"]["content"]
+                msg = choices[0].get("message", {})
+                # 如果是 tool_calls 响应，content 为空，直接返回整个 msg JSON
+                # 供 chat_with_tools 的 ReAct 循环解析 tool_calls
+                if msg.get("tool_calls"):
+                    import json
+                    return json.dumps(msg)  # 返回完整 message 对象
+                return msg.get("content", "")
             case 401 | 403:
                 raise APIError(status_code=resp.status_code, detail=resp.text[:200])
             case 429:

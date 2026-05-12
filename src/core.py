@@ -502,6 +502,7 @@ class ReviewForge:
                 "[Step 3/3] Writer 完成，耗时 %.1fs",
                 result.writer_elapsed_seconds,
             )
+            self._write_visualization_json(result, tmp_dir)
         except Exception as e:
             logger.error("Writer 步骤失败: %s", e, exc_info=True)
             result.error = f"writer: {e}"
@@ -624,6 +625,7 @@ class ReviewForge:
             result.writer_elapsed_seconds = time.time() - t0
             result.step = "complete"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
+            self._write_visualization_json(result, tmp_dir)
         except Exception as e:
             result.error = f"writer: {e}"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
@@ -644,6 +646,7 @@ class ReviewForge:
             result.writer_elapsed_seconds = time.time() - t0
             result.step = "complete"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
+            self._write_visualization_json(result, tmp_dir)
         except Exception as e:
             result.error = f"writer: {e}"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
@@ -651,7 +654,20 @@ class ReviewForge:
 
         return result
 
-    # ── 辅助 ─────────────────────────────────────────────────────────────
+    def _write_visualization_json(
+        self, result: PipelineResult, tmp_dir: Path
+    ) -> None:
+        """将 PipelineResult 转换为 VisualizationData 并写入 visualization_data.json。"""
+        try:
+            from src.adapter.script_adapter import writer_json_to_visualization
+
+            viz_data = writer_json_to_visualization(result._asdict())
+            viz_path = tmp_dir / "visualization_data.json"
+            with open(viz_path, "w", encoding="utf-8") as f:
+                json.dump(viz_data.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
+            logger.info("visualization_data.json 已写入: %s", viz_path)
+        except Exception as exc:
+            logger.warning("写入 visualization_data.json 失败（非致命）: %s", exc)
 
     def _format_papers_for_writer(self, papers: list) -> str:
         """将 PaperNode 列表格式化为 Writer 可读的文本"""

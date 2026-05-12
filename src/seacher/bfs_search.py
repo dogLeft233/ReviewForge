@@ -258,21 +258,84 @@ class BFSSearcher:
         return all_papers
 
     def _search_one_query(self, sq: SearchQuery) -> list[PaperNode]:
-        """对单个搜索词执行：retriever 搜索 → reranker/embedding 过滤"""
-        from src.retrievers import ArxivRetriever
+        """对单个搜索词执行：SerpAPIRetriever → arXiv HTML 直接抓取详情
+
+        Stage 1: SerpAPIRetriever (SerpAPI Google 搜索) 提取 arXiv ID
+        Stage 2: 直接抓取 https://arxiv.org/abs/{id} HTML 页面（无 rate limit）
+        """
+        import re as re_module
+        import httpx
 
         try:
-            with ArxivRetriever() as retriever:
-                results = retriever.search(sq.query, max_results=self.search_papers_count)
+            # Stage 1: SerpAPI Google 搜索提取 arXiv ID
+            from src.retrievers import SerpAPIRetriever
+            with SerpAPIRetriever() as serp:
+                papers = serp.search(sq.query, max_results=self.search_papers_count)
+
+            if not papers:
+                return []
+
+            # Stage 2: 直接抓取 arXiv abstract page 获取详情（无 rate limit）
+            from src.models import PaperCard
+            enriched = []
+            for p in papers:
+                m = re_module.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
+                if not m:
+                    continue
+                aid = m.group(1)
+                try:
+                    resp = httpx.get(f"https://arxiv.org/abs/{aid}", timeout=15, follow_redirects=True)
+                    if resp.status_code != 200:
+                        continue
+                    html = resp.text
+                    title_m = re_module.search(r"<title>\[[^\]]+\]\s*(.*?)</title>", html)
+                    title = title_m.group(1).strip() if title_m else p.title
+                    abstract_m = re_module.search(
+                        r'class="abstract mathjax">(.*?)</blockquote>', html, re_module.DOTALL
+                    )
+                    # Strip the descriptor span "Abstract:" and remaining tags
+                    abstract_raw = abstract_m.group(1) if abstract_m else ""
+                    abstract_raw = re_module.sub(r"<span[^>]*>Abstract:</span>\s*", "", abstract_raw)
+                    abstract = re_module.sub(r"<[^>]+>", "", abstract_raw).strip()
+                    if not abstract and p.abstract:
+                        abstract = p.abstract
+                    author_m = re_module.search(r'class="authors">([^<]+)', html)
+                    authors_str = author_m.group(1).strip() if author_m else ""
+                    authors = [a.strip() for a in authors_str.split(",")] if authors_str else []
+                    enriched.append(PaperCard(
+                        title=title,
+                        authors=authors,
+                        year=0,
+                        abstract=abstract[:800],
+                        url=f"https://arxiv.org/abs/{aid}",
+                        source="serpapi+arxiv",
+                        method_category="",
+                    ))
+                except Exception as e:
+                    logger.debug("arXiv HTML fetch failed %s: %s", aid, e)
+                    continue
+
+            if not enriched:
+                return []
+
+            if self.reranker:
+                return self._score_by_reranker_search(sq.query, enriched)
+            if self.embed:
+                return self._score_by_embedding(sq.query, enriched)
+            # Fallback: no reranker/embed → return all with default score
+            nodes: list[PaperNode] = []
+            for i, r in enumerate(enriched):
+                nodes.append(PaperNode(
+                    title=r.title,
+                    paper_id=r.url or "",
+                    abstract=r.abstract or "",
+                    depth=0,
+                    select_score=1.0 / (i + 1),  # 递减顺序
+                    source=f"Search: {sq.query}",
+                ))
+            return nodes
         except Exception as e:
-            raise RetrievalError(f"检索失败: {sq.query}") from e
-
-        if not results:
-            return []
-
-        if self.reranker:
-            return self._score_by_reranker_search(sq.query, results)
-        return self._score_by_embedding(sq.query, results)
+            raise RetrievalError(f"搜索失败 [{sq.query}]: {e}") from e
 
     def _score_by_reranker_search(
         self, query: str, results: list[Any]
@@ -375,14 +438,51 @@ class BFSSearcher:
         """获取单篇论文的参考文献节点
 
         实现策略（按优先级）:
-        1. Semantic Scholar API — 真实引文关系图（优先，有 paper_id 时）
-        2. arXiv 文本搜索 — 标题 + "related work citations"（降级备用，
-           使用 reranker 或 embedding 过滤）
+        0. ar5iv.org — 抓取 HTML 全文，解析 \\cite{} 引用（PaSa 架构，最优先）
+        1. Semantic Scholar API — 真实引文关系图（降级）
+        2. arXiv 文本搜索 — 标题 + "related work citations"（最后降级）
         """
-        nodes: list[PaperNode] = []
+        import re as re_module
         paper_id = paper.paper_id or ""
 
-        # ── 策略 1：真实引文图（Semantic Scholar）─────────────
+        # ── 策略 0：ar5iv HTML 解析引用（PaSa 架构，最优先）────────
+        if paper_id:
+            raw_id = _extract_arxiv_id(paper.paper_id) if paper.paper_id else ""
+            if raw_id:
+                try:
+                    from src.retrievers import Ar5ivRetriever
+                    with Ar5ivRetriever() as ar5iv:
+                        html = ar5iv.fetch_full_text(raw_id)
+
+                    if html:
+                        # 解析 \cite{...} 或 \citeyearpar{...} 格式的引用
+                        cite_pattern = re_module.compile(r"\\cite[^{]*\{([^}]+)\}")
+                        cited_titles = cite_pattern.findall(html)
+
+                        # 取前 15 个引用标题（去重）
+                        seen_titles = set()
+                        ref_titles = []
+                        for ct in cited_titles:
+                            for t in ct.split(","):
+                                t = t.strip()
+                                if t and t not in seen_titles:
+                                    seen_titles.add(t)
+                                    ref_titles.append(t)
+                        ref_titles = ref_titles[:15]
+
+                        if ref_titles:
+                            nodes = self._fetch_refs_by_titles(ref_titles, paper)
+                            if nodes:
+                                logger.debug(
+                                    "论文 '%s' 借 ar5iv 解析 %d 篇参考文献",
+                                    paper.title[:30], len(nodes),
+                                )
+                                time.sleep(0.5)
+                                return nodes
+                except Exception as e:
+                    logger.debug("ar5iv 解析失败 [%s]: %s，回退 S2", paper.title[:30], e)
+
+        # ── 策略 1：Semantic Scholar 真实引文图 ──────────────────
         if paper_id:
             raw_id = _extract_arxiv_id(paper.paper_id) if paper.paper_id else ""
             s2_id = f"ArXiv:{raw_id}" if raw_id and not raw_id.startswith("ArXiv:") else raw_id
@@ -392,6 +492,7 @@ class BFSSearcher:
                 with SemanticScholarRetriever() as s2:
                     refs = s2.get_references(s2_id, max_results=10)
                 if refs:
+                    nodes = []
                     for r in refs:
                         ref_arxiv = _extract_arxiv_id(r.url)
                         node = PaperNode(
@@ -399,7 +500,7 @@ class BFSSearcher:
                             paper_id=ref_arxiv or r.url or r.title,
                             abstract=r.abstract or "",
                             depth=paper.depth + 1,
-                            select_score=0.0,  # 引文关系不依赖评分
+                            select_score=0.0,
                             source=f"Ref: [{paper.title[:30]}]",
                         )
                         nodes.append(node)
@@ -413,7 +514,7 @@ class BFSSearcher:
                     "S2 引文查找失败 [%s]: %s，回退文本搜索", paper.title[:30], e
                 )
 
-        # ── 策略 2：降级文本搜索（保持向后兼容）──────────────
+        # ── 策略 2：降级文本搜索 ─────────────────────────────────
         try:
             from src.retrievers import ArxivRetriever
 
@@ -431,10 +532,77 @@ class BFSSearcher:
 
         if self.reranker:
             nodes = self._score_refs_by_reranker(paper, related)
-        else:
+        elif self.embed:
             nodes = self._score_refs_by_embedding(paper, related)
+        else:
+            # Fallback: no reranker/embed → return all with default score
+            nodes: list[PaperNode] = []
+            for r in related:
+                ref_arxiv = _extract_arxiv_id(r.url)
+                nodes.append(PaperNode(
+                    title=r.title,
+                    paper_id=ref_arxiv or r.url or r.title,
+                    abstract=r.abstract or "",
+                    depth=paper.depth + 1,
+                    select_score=paper.select_score * 0.9,
+                    source=f"Ref: [{paper.title[:30]}]",
+                ))
 
         time.sleep(3)
+        return nodes
+
+
+    def _fetch_refs_by_titles(
+        self, ref_titles: list[str], parent: PaperNode
+    ) -> list[PaperNode]:
+        """根据论文标题列表，用 SerpAPI 搜索获取 arXiv ID，再获取详情"""
+        import re as re_module
+        import httpx
+        from src.retrievers import SerpAPIRetriever
+
+        nodes: list[PaperNode] = []
+        for title in ref_titles:
+            try:
+                with SerpAPIRetriever() as serp:
+                    papers = serp.search(f"{title} site:arxiv.org", max_results=1)
+
+                if not papers:
+                    continue
+
+                aid = None
+                for p in papers:
+                    m = re_module.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
+                    if m:
+                        aid = m.group(1)
+                        break
+
+                if not aid:
+                    continue
+
+                resp = httpx.get(f"https://arxiv.org/abs/{aid}", timeout=15, follow_redirects=True)
+                if resp.status_code != 200:
+                    continue
+                html = resp.text
+                title_m = re_module.search(r"<title>\[[^\]]+\]\s*(.*?)</title>", html)
+                paper_title = title_m.group(1).strip() if title_m else title
+                abstract_m = re_module.search(
+                    r'class="abstract mathjax">(.*?)</blockquote>', html, re_module.DOTALL
+                )
+                abstract_raw = abstract_m.group(1) if abstract_m else ""
+                abstract_raw = re_module.sub(r"<span[^>]*>Abstract:</span>\s*", "", abstract_raw)
+                abstract = re_module.sub(r"<[^>]+>", "", abstract_raw).strip()
+                nodes.append(PaperNode(
+                    title=paper_title,
+                    paper_id=aid,
+                    abstract=abstract[:800],
+                    depth=parent.depth + 1,
+                    select_score=parent.select_score * 0.9,
+                    source=f"ar5iv Ref: [{parent.title[:30]}]",
+                ))
+                time.sleep(0.5)
+            except Exception as e:
+                logger.debug("引用扩展失败 [%s]: %s", title[:30], e)
+                continue
         return nodes
 
     def _score_refs_by_reranker(

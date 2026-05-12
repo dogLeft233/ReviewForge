@@ -14,6 +14,7 @@
 
 from src.retrievers.arxiv import ArxivRetriever
 from src.retrievers.ar5iv import Ar5ivRetriever
+from src.retrievers.serpapi import SerpAPIRetriever
 from src.retrievers.github import GithubRetriever
 from src.retrievers.huggingface import HuggingFaceRetriever
 from src.retrievers.semantic_scholar import SemanticScholarRetriever
@@ -21,6 +22,7 @@ from src.retrievers.semantic_scholar import SemanticScholarRetriever
 __all__ = [
     "ArxivRetriever",
     "Ar5ivRetriever",
+    "SerpAPIRetriever",
     "GithubRetriever",
     "HuggingFaceRetriever",
     "SemanticScholarRetriever",

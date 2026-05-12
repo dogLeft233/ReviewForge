@@ -128,6 +128,7 @@ def search_arxiv_keywords(question: str, llm: Any, max_turns: int = 8) -> str:
         reply = llm.chat(
             external_prompt=SYSTEM_PROMPT,
             messages=messages,
+            max_tokens=500,
         )
 
         logger.debug("LLM 回复长度: %d", len(reply))
@@ -202,6 +203,7 @@ def search_arxiv_keywords_with_explorer(
         reply = llm.chat(
             external_prompt=SYSTEM_PROMPT,
             messages=messages,
+            max_tokens=500,
         )
 
         tool_calls = _parse_tool_calls(reply)

@@ -13,8 +13,14 @@ from __future__ import annotations
 
 from src.agent.base import AgentBackend
 from src.agent.chat_agent import ChatAgent
+from src.agent.explorer_orchestrator import ExplorerOrchestrator
+from src.agent.skills.bfs_search_skill import make_bfs_search_tool
+from src.agent.skills.multi_source_searcher_skill import make_multi_source_searcher_tool
 
 __all__ = [
     "AgentBackend",
     "ChatAgent",
+    "ExplorerOrchestrator",
+    "make_bfs_search_tool",
+    "make_multi_source_searcher_tool",
 ]

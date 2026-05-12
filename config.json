@@ -2,7 +2,7 @@
     "bocha_api_key": "sk-3833727877674890a4b12ddae6ee5c65",
     "semantic_scholar_api_key": "",
     "github_token": "",
-    "serper_api_key": "",
+    "serpapi_api_key": "c1a73818bbe966f04c5190dc7856e5b60da67a9014fe55511757bfb36d81426f",
     "huggingface_token": "",
     "max_retries": 3,
     "retry_delay_seconds": 2.0,
