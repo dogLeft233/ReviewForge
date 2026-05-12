@@ -67,6 +67,7 @@ def convert_with_openai_enhancement(
     llm: Any | None = None,
     *,
     config_path: str | None = None,
+    snapshot_path: str | None = None,
     force: bool = False,
 ) -> VisualizationData:
     """Script + local LLM refine + optional OpenAI Responses enhancement."""
@@ -75,7 +76,13 @@ def convert_with_openai_enhancement(
     try:
         from src.adapter.openai_responses_enhancer import enhance_with_openai_responses
 
-        return enhance_with_openai_responses(viz, raw, config_path=config_path, force=force)
+        return enhance_with_openai_responses(
+            viz,
+            raw,
+            config_path=config_path,
+            snapshot_path=snapshot_path,
+            force=force,
+        )
     except Exception as exc:
         logger.warning("OpenAI enhancement failed, keeping previous result: %s", exc)
         return viz

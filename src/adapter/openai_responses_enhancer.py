@@ -13,6 +13,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,7 @@ def enhance_with_openai_responses(
     raw: dict[str, Any],
     *,
     config_path: str | Path | None = None,
+    snapshot_path: str | Path | None = None,
     force: bool = False,
 ) -> VisualizationData:
     cfg = load_openai_enhance_config(config_path)
@@ -111,20 +113,47 @@ def enhance_with_openai_responses(
 
     enhanced = viz
     module_reports: dict[str, Any] = {}
-    for module in _enhancement_modules(enhanced):
+    modules = _enhancement_modules(enhanced)
+    snapshot = _load_snapshot(snapshot_path, modules)
+    any_module_ran = False
+    any_module_attempted = False
+    for module in modules:
+        if not _snapshot_module_should_run(snapshot, module):
+            logger.info("[openai-enhance] module=%s skipped by snapshot", module["name"])
+            module_reports[module["name"]] = {
+                "overall_score": None,
+                "enhancement_summary": "Skipped by snapshot.",
+                "skipped": True,
+            }
+            continue
         payload = _build_module_request_payload(module, enhanced, raw, cfg)
+        any_module_attempted = True
         try:
             logger.info("[openai-enhance] module=%s request", module["name"])
             response = _call_responses_api(payload, cfg)
             patch = _extract_patch(response)
         except Exception as exc:
             logger.warning("[openai-enhance] module=%s failed: %s", module["name"], exc)
+            _snapshot_mark_module(snapshot, module, needs_rerun=True)
             continue
         patch = _filter_patch_for_module(patch, module["name"])
         enhanced = _merge_patch(enhanced, patch, cfg)
+        any_module_ran = True
         module_reports[module["name"]] = patch.get("quality_report") or {}
+        _snapshot_mark_module(snapshot, module, needs_rerun=not _module_patch_reasonable(patch, module["name"]))
 
     enhanced = rebuild_graph(enhanced)
+    if not any_module_ran and not any_module_attempted:
+        existing_quality = enhanced.quality_report or {}
+        if not existing_quality.get("overall_score"):
+            existing_quality = {
+                "overall_score": 1,
+                "modules": module_reports,
+                "final_metrics": assess_visualization_data(enhanced),
+                "enhancement_summary": "All OpenAI enhancement modules were skipped by snapshot.",
+            }
+        _save_snapshot(snapshot_path, snapshot, enabled=bool(snapshot_path), any_module_ran=False)
+        return enhanced.model_copy(update={"quality_report": existing_quality})
     scored_reports = [
         report.get("overall_score")
         for report in module_reports.values()
@@ -138,6 +167,7 @@ def enhance_with_openai_responses(
             "final_metrics": assess_visualization_data(enhanced),
         }
     })
+    _save_snapshot(snapshot_path, snapshot, enabled=bool(snapshot_path), any_module_ran=any_module_ran)
     logger.info("[openai-enhance] quality=%s", assess_visualization_data(enhanced))
     return enhanced
 
@@ -150,6 +180,7 @@ def _enhancement_modules(viz: VisualizationData) -> list[dict[str, Any]]:
             "name": "paper_timeline_links",
             "title": "Paper and timeline URL enrichment",
             "web_search": True,
+            "fields": ["papers.url", "timeline.related_papers", "resources.paper_links"],
             "goal": (
                 "Find authoritative URLs for existing papers and make timeline events point to "
                 "the best matching existing paper ids. Do not add new timeline events unless the "
@@ -160,6 +191,7 @@ def _enhancement_modules(viz: VisualizationData) -> list[dict[str, Any]]:
             "name": "method_details",
             "title": "Concise method pros and cons",
             "web_search": False,
+            "fields": ["methods.pros", "methods.cons"],
             "goal": (
                 "Rewrite each existing method's pros and cons as concise LLM-summarized bullets "
                 "for the Method Details table. Use only the current method description, linked "
@@ -170,6 +202,7 @@ def _enhancement_modules(viz: VisualizationData) -> list[dict[str, Any]]:
             "name": "method_links",
             "title": "Method representative-paper linkage",
             "web_search": True,
+            "fields": ["methods.papers", "resources.method_links"],
             "goal": (
                 "For each existing method, verify or repair representative paper ids using only "
                 "existing paper ids. Add resources only when they directly support a method."
@@ -179,6 +212,7 @@ def _enhancement_modules(viz: VisualizationData) -> list[dict[str, Any]]:
             "name": "frontier_sources",
             "title": "Frontier Chinese descriptions and recent-paper supplementation",
             "web_search": True,
+            "fields": ["frontiers.items", "frontiers.resources"],
             "goal": (
                 "Supplement Frontier Trends with more source-backed 2024-2026 frontier papers "
                 "and open-source projects. Add URL-bearing resources for every returned frontier, "
@@ -189,9 +223,22 @@ def _enhancement_modules(viz: VisualizationData) -> list[dict[str, Any]]:
             "name": "frontier_descriptions",
             "title": "Concise frontier card descriptions",
             "web_search": False,
+            "fields": ["frontiers.description"],
             "goal": (
                 "Rewrite every existing frontier card description as a short, readable Chinese LLM summary. "
                 "Use current frontier names, resources, linked papers, and raw stage-3 evidence."
+            ),
+        },
+        {
+            "name": "benchmark_descriptions",
+            "title": "Benchmark unique descriptions",
+            "web_search": False,
+            "fields": ["benchmarks.description"],
+            "goal": (
+                "Write a unique, specific Chinese description for each existing benchmark that highlights "
+                "its distinctive characteristics — what data it contains, what it tests, how it differs "
+                "from other benchmarks, and why it matters for this domain. Each description must be "
+                "tailored to that specific benchmark, not a generic placeholder."
             ),
         },
     ]
@@ -204,6 +251,7 @@ def _filter_patch_for_module(patch: dict[str, Any], module_name: str) -> dict[st
         "method_links": {"papers", "methods", "resources"},
         "frontier_sources": {"frontiers", "resources"},
         "frontier_descriptions": {"frontiers"},
+        "benchmark_descriptions": {"benchmarks"},
     }
     allowed_keys = allowed.get(module_name, set())
     patch_obj = dict(patch.get("patch") or {})
@@ -217,6 +265,102 @@ def _filter_patch_for_module(patch: dict[str, Any], module_name: str) -> dict[st
         "patch": filtered_patch,
         "remaining_gaps": patch.get("remaining_gaps") or [],
     }
+
+
+def _default_snapshot(modules: list[dict[str, Any]], *, needs_rerun: bool) -> dict[str, Any]:
+    fields: dict[str, bool] = {}
+    module_map: dict[str, list[str]] = {}
+    for module in modules:
+        module_fields = [str(field) for field in module.get("fields") or []]
+        module_map[module["name"]] = module_fields
+        for field_name in module_fields:
+            fields[field_name] = needs_rerun
+    return {
+        "version": 1,
+        "description": "True means the field should be regenerated by OpenAI Responses API on the next export.",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "fields": fields,
+        "modules": module_map,
+    }
+
+
+def _load_snapshot(path: str | Path | None, modules: list[dict[str, Any]]) -> dict[str, Any]:
+    if not path:
+        return _default_snapshot(modules, needs_rerun=True)
+
+    snapshot_path = Path(path)
+    if not snapshot_path.exists():
+        logger.info("[openai-enhance] snapshot missing; all modules will run: %s", snapshot_path)
+        return _default_snapshot(modules, needs_rerun=True)
+
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("[openai-enhance] cannot read snapshot %s: %s; all modules will run", snapshot_path, exc)
+        return _default_snapshot(modules, needs_rerun=True)
+
+    default = _default_snapshot(modules, needs_rerun=True)
+    fields = snapshot.get("fields")
+    if not isinstance(fields, dict):
+        fields = {}
+    merged_fields = dict(default["fields"])
+    for key, value in fields.items():
+        if key in merged_fields:
+            merged_fields[key] = bool(value)
+    snapshot["version"] = 1
+    snapshot["description"] = default["description"]
+    snapshot["fields"] = merged_fields
+    snapshot["modules"] = default["modules"]
+    return snapshot
+
+
+def _snapshot_module_should_run(snapshot: dict[str, Any], module: dict[str, Any]) -> bool:
+    fields = snapshot.get("fields") or {}
+    module_fields = [str(field) for field in module.get("fields") or []]
+    return any(bool(fields.get(field_name, True)) for field_name in module_fields)
+
+
+def _snapshot_mark_module(snapshot: dict[str, Any], module: dict[str, Any], *, needs_rerun: bool) -> None:
+    fields = snapshot.setdefault("fields", {})
+    for field_name in module.get("fields") or []:
+        fields[str(field_name)] = needs_rerun
+    snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
+def _module_patch_reasonable(patch: dict[str, Any], module_name: str) -> bool:
+    quality = patch.get("quality_report") or {}
+    score = quality.get("overall_score") or 0
+    patch_obj = patch.get("patch") or {}
+    if score and score < 1:
+        return False
+    if module_name == "paper_timeline_links":
+        return bool(patch_obj.get("papers") or patch_obj.get("timeline") or patch_obj.get("resources"))
+    if module_name in {"method_details", "method_links"}:
+        return bool(patch_obj.get("methods") or patch_obj.get("resources") or patch_obj.get("papers"))
+    if module_name in {"frontier_sources", "frontier_descriptions"}:
+        return bool(patch_obj.get("frontiers") or patch_obj.get("resources"))
+    if module_name == "benchmark_descriptions":
+        return bool(patch_obj.get("benchmarks"))
+    return bool(patch_obj)
+
+
+def _save_snapshot(
+    path: str | Path | None,
+    snapshot: dict[str, Any],
+    *,
+    enabled: bool,
+    any_module_ran: bool,
+) -> None:
+    if not enabled or not path:
+        return
+    snapshot_path = Path(path)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    if any_module_ran:
+        logger.info("[openai-enhance] snapshot updated: %s", snapshot_path)
+    else:
+        logger.info("[openai-enhance] snapshot unchanged; no module ran: %s", snapshot_path)
 
 
 def _build_request_payload(
@@ -423,6 +567,7 @@ Return JSON with this exact top-level shape:
     "timeline": [{{"year": 0, "title": "", "category": "", "description": "", "related_papers": []}}],
     "methods": [{{"id": "", "name": "", "category": "", "description": "", "pros": [], "cons": [], "papers": []}}],
     "frontiers": [{{"name": "", "description": "", "importance": "", "related_methods": [], "related_papers": []}}],
+    "benchmarks": [{{"model": "", "dataset": "", "metric": "", "score": 0, "year": 0, "url": "", "description": ""}}],
     "resources": [{{"name": "", "type": "paper|github_repo|model_or_space|leaderboard|dataset|resource", "url": "", "description": "", "related_methods": [], "related_papers": []}}]
   }},
   "remaining_gaps": [{{"target": "", "reason": "", "hint": ""}}]
@@ -497,6 +642,21 @@ def _module_rules(module_name: str) -> str:
             "- Description must explain the technical point or why it matters; do not output English-only text, URLs, or Markdown links.\n"
             "- Do not add resources, papers, timeline, or methods in this module."
         )
+    if module_name == "benchmark_descriptions":
+        return (
+            "- Return one patch.benchmarks entry per existing benchmark, matched by the model field (benchmark/leaderboard name).\n"
+            "- Each description must be written in Chinese, 1-2 sentences (no more than 60 Chinese characters total).\n"
+            "- Each description must be UNIQUE and specific to that benchmark:\n"
+            "  * What data does it contain (size, domain, language, recording conditions)?\n"
+            "  * What task or capability does it evaluate?\n"
+            "  * What makes it distinctive compared to other benchmarks in this field?\n"
+            "  * What is its community status or significance?\n"
+            "- Do NOT copy-paste the same description for multiple benchmarks.\n"
+            "- Do NOT use generic phrases like '数据来源于' or '模型对比' for every entry.\n"
+            "- Do not change url, metric, score, year, or dataset fields.\n"
+            "- Do not add new benchmarks; do not add resources, papers, methods, timeline, or frontiers.\n"
+            "- The model field in patch must exactly match the existing benchmark's model field."
+        )
     return "- Improve only the stated module."
 
 
@@ -513,6 +673,8 @@ def _compact_viz_for_module(viz: VisualizationData, module_name: str) -> dict[st
         base["timeline"] = [e.model_dump() for e in viz.timeline]
     elif module_name in {"frontier_sources", "frontier_descriptions"}:
         base["frontiers"] = [f.model_dump() for f in viz.frontiers]
+    elif module_name == "benchmark_descriptions":
+        base["benchmarks"] = [b.model_dump() for b in viz.benchmarks]
     return base
 
 
@@ -730,30 +892,71 @@ def _merge_frontiers(
 
 
 def _merge_benchmarks(current: list[Benchmark], patches: list[Any]) -> list[Benchmark]:
-    out: list[Benchmark] = []
-    seen: set[tuple[str, str, str]] = set()
+    if not patches:
+        return current
+
+    # Index existing benchmarks for in-place updates. OpenAI often returns the
+    # same catalog entry with a better description; that should update, not
+    # append a duplicate row.
+    by_model: dict[str, int] = {b.model.lower(): i for i, b in enumerate(current) if b.model}
+    by_url: dict[str, int] = {b.url.lower(): i for i, b in enumerate(current) if b.url}
+    updated = list(current)
+    changed = False
+    new_benchmarks: list[Benchmark] = []
+    seen: set[str] = {b.url.lower() for b in current if b.url}
+    seen.update(b.model.lower() for b in current if b.model)
+
     for item in patches:
         if not isinstance(item, dict):
             continue
         data = dict(item)
         if data.get("name") and not data.get("model"):
             data["model"] = data["name"]
+
+        model_key = str(data.get("model") or "").strip().lower()
+        url_key = str(data.get("url") or "").strip().lower()
+        desc = str(data.get("description") or "").strip()
+        if not desc:
+            # A benchmark patch without description neither improves an
+            # existing row nor creates a useful catalog item.
+            continue
+        target_idx = by_url.get(url_key) if url_key else None
+        if target_idx is None and model_key:
+            target_idx = by_model.get(model_key)
+
+        if target_idx is not None:
+            old = updated[target_idx]
+            update = {
+                "model": data.get("model") or old.model,
+                "dataset": data.get("dataset") or old.dataset,
+                "metric": data.get("metric") or old.metric,
+                "description": desc,
+                "url": data.get("url") or old.url,
+            }
+            updated[target_idx] = old.model_copy(update=update)
+            changed = True
+            continue
+
+        # New benchmark catalog entry: must have model/dataset and url
         if not (data.get("dataset") or data.get("model")) or not data.get("url"):
             continue
-        # Benchmark tab is a catalog, not a SOTA leaderboard. Keep the
-        # catalog fields and discard model-score trend fields from LLM patches.
+        if url_key in by_url:
+            continue
+        # Benchmark tab is a catalog, not a SOTA leaderboard — discard score/year trend fields.
         data["score"] = 0.0
         data["year"] = 0
         try:
             benchmark = Benchmark(**data)
         except Exception:
             continue
-        key = (benchmark.model.lower(), benchmark.dataset.lower(), benchmark.metric.lower())
+        key = benchmark.url.lower() if benchmark.url else benchmark.model.lower()
         if key in seen:
             continue
         seen.add(key)
-        out.append(benchmark)
-    return out or current
+        new_benchmarks.append(benchmark)
+        changed = True
+
+    return (updated + new_benchmarks) if changed else current
 
 
 def _merge_timeline(

@@ -25,6 +25,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.adapter import convert, convert_with_llm, convert_with_openai_enhancement  # noqa: E402
+from src.adapter.schema import VisualizationData  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
@@ -36,24 +37,24 @@ def _convert(
     use_llm: bool,
     use_openai_enhance: bool,
     enhance_config: str | None,
+    snapshot_path: Path | None = None,
 ) -> None:
     raw = json.loads(input_path.read_text(encoding="utf-8"))
+    snapshot_path = snapshot_path or output_path.parent / "snapshot.json"
     if use_openai_enhance:
-        if use_llm:
-            viz = convert_with_openai_enhancement(
-                raw,
-                config_path=enhance_config,
-                force=True,
-            )
-        else:
-            from src.adapter.openai_responses_enhancer import enhance_with_openai_responses
+        from src.adapter.openai_responses_enhancer import enhance_with_openai_responses
 
-            viz = enhance_with_openai_responses(
-                convert(raw),
-                raw,
-                config_path=enhance_config,
-                force=True,
-            )
+        if snapshot_path.exists() and output_path.exists():
+            viz_base = VisualizationData.model_validate_json(output_path.read_text(encoding="utf-8"))
+        else:
+            viz_base = convert_with_llm(raw) if use_llm else convert(raw)
+        viz = enhance_with_openai_responses(
+            viz_base,
+            raw,
+            config_path=enhance_config,
+            snapshot_path=snapshot_path,
+            force=True,
+        )
     else:
         viz = convert_with_llm(raw) if use_llm else convert(raw)
 
@@ -82,6 +83,8 @@ def _convert(
         f"| nodes={len(viz.graph.nodes)} edges={len(viz.graph.edges)} "
         f"| needs_research={len(viz.needs_research)}{enhancement_note}"
     )
+    if use_openai_enhance:
+        print(f"     snapshot={snapshot_path}")
 
 
 def _openai_enhancement_effective(viz) -> bool:
@@ -151,6 +154,7 @@ def main() -> None:
             use_llm=use_llm,
             use_openai_enhance=args.openai_enhance,
             enhance_config=args.enhance_config,
+            snapshot_path=out_path.parent / "snapshot.json",
         )
         return
 
@@ -179,6 +183,7 @@ def main() -> None:
                 use_llm=use_llm,
                 use_openai_enhance=args.openai_enhance,
                 enhance_config=args.enhance_config,
+                snapshot_path=d / "snapshot.json",
             )
         except Exception as exc:
             print(f"[FAIL] {in_path}: {exc}")
