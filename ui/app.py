@@ -24,6 +24,7 @@ from ui.views import (
     benchmark,
     frontier,
     knowledge_graph,
+    links,
     method_map,
     overview,
     timeline,
@@ -131,6 +132,7 @@ def main() -> None:
         "Benchmark",
         "Knowledge Graph",
         "Ask Agent",
+        "Links",
     ])
 
     with tabs[0]:
@@ -152,6 +154,8 @@ def main() -> None:
         knowledge_graph.render(data)
     with tabs[6]:
         chat_agent.render(data)
+    with tabs[7]:
+        links.render(data)
 
 
 main()

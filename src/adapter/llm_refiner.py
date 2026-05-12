@@ -333,6 +333,12 @@ def refine_with_llm(viz: VisualizationData, raw: dict[str, Any], llm: LLM) -> Vi
         "benchmarks": new_benchmarks,
         "frontiers": new_frontiers,
     })
+    try:
+        from src.adapter.script_adapter import rebuild_graph
+
+        refined = rebuild_graph(refined)
+    except Exception as exc:
+        logger.warning("[refiner] graph rebuild failed, keeping script graph: %s", exc)
     refined.needs_research = _drop_satisfied_tasks(refined)
     logger.info("[refiner] done: needs_research left=%d", len(refined.needs_research))
     return refined

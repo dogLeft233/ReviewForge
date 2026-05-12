@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ NodeType = Literal[
     "trend",
     "concept",
     "topic",
+    "resource",
 ]
 
 EdgeRelation = Literal[
@@ -37,6 +38,7 @@ class Overview(BaseModel):
     definition: str = ""
     core_questions: list[str] = Field(default_factory=list)
     key_concepts: list[str] = Field(default_factory=list)
+    key_concept_explanations: dict[str, str] = Field(default_factory=dict)
 
 
 class TimelineEvent(BaseModel):
@@ -74,12 +76,23 @@ class Benchmark(BaseModel):
     score: float = 0.0
     year: int = 0
     url: str = ""
+    description: str = ""
 
 
 class Frontier(BaseModel):
     name: str = ""
     description: str = ""
     importance: str = ""
+    related_methods: list[str] = Field(default_factory=list)
+    related_papers: list[str] = Field(default_factory=list)
+
+
+class Resource(BaseModel):
+    id: str
+    name: str = ""
+    type: str = "resource"
+    url: str = ""
+    description: str = ""
     related_methods: list[str] = Field(default_factory=list)
     related_papers: list[str] = Field(default_factory=list)
 
@@ -123,5 +136,7 @@ class VisualizationData(BaseModel):
     papers: list[Paper] = Field(default_factory=list)
     benchmarks: list[Benchmark] = Field(default_factory=list)
     frontiers: list[Frontier] = Field(default_factory=list)
+    resources: list[Resource] = Field(default_factory=list)
     graph: KnowledgeGraph = Field(default_factory=KnowledgeGraph)
     needs_research: list[ResearchTask] = Field(default_factory=list)
+    quality_report: dict[str, Any] = Field(default_factory=dict)

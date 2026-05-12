@@ -21,12 +21,26 @@ def render(
         st.info("当前数据中没有 timeline 事件。")
         return
 
+    paper_lookup = {p.id: p for p in data.papers}
     rows = [
         {
             "year": e.year,
             "title": e.title or "(无标题)",
             "category": e.category or "未分类",
             "description": e.description or "",
+            "papers": " · ".join(
+                paper_lookup[pid].title
+                for pid in e.related_papers
+                if pid in paper_lookup
+            ),
+            "paper_link": next(
+                (
+                    paper_lookup[pid].url
+                    for pid in e.related_papers
+                    if pid in paper_lookup and paper_lookup[pid].url
+                ),
+                "",
+            ),
         }
         for e in events
     ]
@@ -53,14 +67,23 @@ def render(
     )
     fig.update_traces(marker=dict(size=14, line=dict(width=1, color="white")))
     fig.update_layout(
-        height=max(400, 40 * len(df) + 120),
+        height=max(560, 48 * len(df) + 180),
         title="按年份排列的代表性事件",
         xaxis_title="年份",
         yaxis_title="事件",
         legend_title="类别",
-        margin=dict(l=10, r=10, t=60, b=40),
+        margin=dict(l=20, r=30, t=70, b=70),
     )
+    fig.update_xaxes(nticks=min(18, max(8, df["year"].nunique() + 2)), automargin=True)
+    fig.update_yaxes(automargin=True)
     st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("📄 事件明细"):
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "paper_link": st.column_config.LinkColumn("paper_link"),
+            },
+        )
