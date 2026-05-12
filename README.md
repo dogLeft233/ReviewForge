@@ -372,16 +372,29 @@ python scripts/export_viz.py tmp/ASR自动语音识别 --no-llm --openai-enhance
 
 ```bash
 # 从项目根目录启动
-streamlit run ui/app.py
+streamlit run ui/app.py --offline
+
+# 或：从领域请求开始自动生成并展示
+streamlit run ui/app.py --online
 ```
 
 默认浏览器会弹开 `http://localhost:8501`。
+
+如果你的 Streamlit 版本要求脚本参数分隔符，可使用：
+
+```bash
+streamlit run ui/app.py -- --offline
+streamlit run ui/app.py -- --online
+```
 
 ### 界面与操作
 
 侧栏：
 
 - **上传 `visualization_data.json`** —— 不上传则用内置的 ASR demo（自动读 `tmp/ASR自动语音识别/visualization_data.json`）
+- **Offline 模式** —— 只负责加载已有 JSON 并可视化，适合复现和调试。
+- **Online 模式** —— 输入研究领域后自动执行 Explorer / Searcher / Writer，随后导出 `visualization_data.json` 并可选调用 OpenAI Responses API 增强。
+- **OpenAI snapshot** —— Online 模式中可以选择沿用、全量重跑、全部跳过或自定义重跑 `snapshot.json` 字段。
 - **方法类别筛选** —— 影响 Timeline / Method Map 的展示
 - **年份范围** —— 联动 Timeline / Benchmark
 
@@ -407,8 +420,11 @@ python scripts/run_pipeline.py -t "ASR自动语音识别"
 python scripts/export_viz.py tmp/ASR自动语音识别
 
 # 3. 启动前端
-streamlit run ui/app.py
+streamlit run ui/app.py --offline
 # 侧栏上传刚生成的 tmp/ASR自动语音识别/visualization_data.json
+
+# 或者直接使用 online 模式从领域请求开始
+streamlit run ui/app.py --online
 ```
 ## OpenAI Responses API 增强（可选）
 

@@ -1,13 +1,17 @@
-"""ReviewForge Scholar Agent — Streamlit MVP entry point.
+"""ReviewForge Scholar Agent Streamlit entry point.
 
-Run from project root:
-    streamlit run ui/app.py
+Offline mode:
+    streamlit run ui/app.py --offline
+
+Online mode:
+    streamlit run ui/app.py --online
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Literal
 
 # Make `src.*` importable when streamlit is invoked from the repo root.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -16,28 +20,24 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from src.logging_config import get_logger, set_log_level, LOG_LEVELS, DEFAULT_LOG_LEVEL  # noqa: E402
-
+from src.logging_config import DEFAULT_LOG_LEVEL, LOG_LEVELS, get_logger, set_log_level  # noqa: E402
 from src.visualizer.loader import load_demo_data, load_json  # noqa: E402
 from src.visualizer.schema import VisualizationData  # noqa: E402
-from ui.views import (
+from ui import online_workflow  # noqa: E402
+from ui.views import (  # noqa: E402
     benchmark,
+    chat_agent,
     frontier,
     knowledge_graph,
     links,
     method_map,
     overview,
     timeline,
-    chat_agent,
 )
 
-# 初始化日志记录器
+RunMode = Literal["offline", "online"]
+
 logger = get_logger(__name__)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Page setup
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 st.set_page_config(
@@ -48,33 +48,72 @@ st.set_page_config(
 )
 
 
-def _load_data() -> tuple[VisualizationData, str]:
+def _run_mode() -> RunMode:
+    args = set(sys.argv[1:])
+    if "--offline" in args and "--online" in args:
+        st.error("只能选择一种运行模式：--offline 或 --online。")
+        st.stop()
+    if "--online" in args or "online" in args:
+        return "online"
+    return "offline"
+
+
+def _load_offline_data() -> tuple[VisualizationData, str]:
     """Returns (data, source_label). Falls back to demo on any error."""
+
     uploaded = st.session_state.get("uploaded_file")
     if uploaded is None:
         return load_demo_data(), "内置 Demo (ASR)"
     try:
         return load_json(uploaded), f"上传文件：{uploaded.name}"
-    except Exception as exc:  # surface error in sidebar, fall back to demo
+    except Exception as exc:
         st.sidebar.error(f"读取失败：{exc}")
         st.sidebar.info("已自动回退到内置 Demo 数据。")
         return load_demo_data(), "内置 Demo (回退)"
 
 
-def _sidebar(data: VisualizationData, source_label: str) -> dict:
-    st.sidebar.header("⚙️ 控制面板")
-    st.sidebar.file_uploader(
-        "上传 visualization_data.json",
-        type=["json"],
-        key="uploaded_file",
-        help="不上传则使用内置 ASR Demo 数据",
+def _log_level_control() -> None:
+    log_level = st.sidebar.selectbox(
+        "日志级别",
+        options=LOG_LEVELS,
+        index=LOG_LEVELS.index(st.session_state.get("log_level", DEFAULT_LOG_LEVEL)),
+        help="调整日志详细程度；DEBUG 会输出请求/响应详情",
     )
-    st.sidebar.caption(f"📦 数据来源：{source_label}")
+    if log_level != st.session_state.get("log_level"):
+        st.session_state["log_level"] = log_level
+        set_log_level(log_level)
+        st.sidebar.success(f"日志级别已调整为：{log_level}")
+
+
+def _empty_sidebar(mode: RunMode) -> None:
+    st.sidebar.header("控制面板")
+    st.sidebar.caption(f"运行模式：{mode}")
+    st.sidebar.info("在线模式会在生成 visualization_data.json 后显示可视化筛选器。")
+    st.sidebar.divider()
+    _log_level_control()
+
+
+def _sidebar(
+    data: VisualizationData,
+    source_label: str,
+    *,
+    mode: RunMode,
+    allow_upload: bool,
+) -> dict:
+    st.sidebar.header("控制面板")
+    st.sidebar.caption(f"运行模式：{mode}")
+    if allow_upload:
+        st.sidebar.file_uploader(
+            "上传 visualization_data.json",
+            type=["json"],
+            key="uploaded_file",
+            help="不上传则使用内置 ASR Demo 数据",
+        )
+    st.sidebar.caption(f"数据来源：{source_label}")
     st.sidebar.markdown(f"### 当前领域\n**{data.topic}**")
 
     st.sidebar.divider()
 
-    # Method category filter (used by Method Map / Frontier views indirectly)
     categories = sorted({m.category for m in data.methods if m.category})
     selected_categories = st.sidebar.multiselect(
         "方法类别筛选",
@@ -83,7 +122,6 @@ def _sidebar(data: VisualizationData, source_label: str) -> dict:
         help="影响 Timeline 与 Method 详情的展示",
     )
 
-    # Year range from timeline + papers + benchmarks
     year_pool = (
         [e.year for e in data.timeline if e.year]
         + [p.year for p in data.papers if p.year]
@@ -98,18 +136,7 @@ def _sidebar(data: VisualizationData, source_label: str) -> dict:
         year_range = None
 
     st.sidebar.divider()
-
-    # 日志级别设置
-    log_level = st.sidebar.selectbox(
-        "🪵 日志级别",
-        options=LOG_LEVELS,
-        index=LOG_LEVELS.index(st.session_state.get("log_level", DEFAULT_LOG_LEVEL)),
-        help="调整日志详细程度；DEBUG 会输出请求/响应详情",
-    )
-    if log_level != st.session_state.get("log_level"):
-        st.session_state["log_level"] = log_level
-        set_log_level(log_level)
-        st.sidebar.success(f"日志级别已调整为：{log_level}")
+    _log_level_control()
 
     return {
         "selected_categories": selected_categories,
@@ -117,13 +144,7 @@ def _sidebar(data: VisualizationData, source_label: str) -> dict:
     }
 
 
-def main() -> None:
-    st.title("ReviewForge Scholar Agent")
-    st.caption("帮助学者快速理解一个研究领域的发展脉络、技术地图与前沿趋势")
-
-    data, source_label = _load_data()
-    filters = _sidebar(data, source_label)
-
+def _render_visualization_tabs(data: VisualizationData, filters: dict) -> None:
     tabs = st.tabs([
         "Overview",
         "Timeline",
@@ -138,9 +159,7 @@ def main() -> None:
     with tabs[0]:
         overview.render(data)
     with tabs[1]:
-        # Timeline category filter merges method categories + timeline categories.
         tl_categories = sorted({e.category for e in data.timeline if e.category})
-        # If the user filtered method categories, also restrict timeline if any overlap.
         sel = filters["selected_categories"] or []
         applied = [c for c in tl_categories if not sel or c in sel] or tl_categories
         timeline.render(data, year_range=filters["year_range"], selected_categories=applied)
@@ -156,6 +175,51 @@ def main() -> None:
         chat_agent.render(data)
     with tabs[7]:
         links.render(data)
+
+
+def _render_offline_app() -> None:
+    st.title("ReviewForge Scholar Agent")
+    st.caption("Offline 模式：上传或加载已有 visualization_data.json 进行可视化分析。")
+
+    data, source_label = _load_offline_data()
+    filters = _sidebar(data, source_label, mode="offline", allow_upload=True)
+    _render_visualization_tabs(data, filters)
+
+
+def _render_online_app() -> None:
+    existing_data = st.session_state.get("online_visualization_data")
+    if isinstance(existing_data, VisualizationData):
+        with st.sidebar:
+            data, source_label = online_workflow.render(compact=True)
+        if not isinstance(data, VisualizationData):
+            st.rerun()
+
+        filters = _sidebar(data, source_label, mode="online", allow_upload=False)
+        st.title(data.topic or "ReviewForge Scholar Agent")
+        st.caption("Online 模式可视化结果")
+        _render_visualization_tabs(data, filters)
+        return
+
+    st.title("ReviewForge Scholar Agent")
+    st.caption("Online 模式：从领域请求开始，自动完成检索、解析、增强和可视化展示。")
+
+    data, source_label = online_workflow.render(compact=False)
+    if data is None:
+        _empty_sidebar("online")
+        return
+
+    filters = _sidebar(data, source_label, mode="online", allow_upload=False)
+    st.title(data.topic or "ReviewForge Scholar Agent")
+    st.caption("Online 模式可视化结果")
+    _render_visualization_tabs(data, filters)
+
+
+def main() -> None:
+    mode = _run_mode()
+    if mode == "online":
+        _render_online_app()
+    else:
+        _render_offline_app()
 
 
 main()
