@@ -23,12 +23,82 @@ _NODE_COLORS = {
     "resource": "#17becf",
 }
 
+_NODE_SIZE = 15
+_NODE_FONT_SIZE = 15
+_EDGE_FONT_SIZE = 14
+_LABEL_DRAW_THRESHOLD = 0
+_LABEL_MAX_VISIBLE = 1000
+_PHYSICS_GRAVITY = -3500
+_PHYSICS_CENTRAL_GRAVITY = 0.18
+_PHYSICS_SPRING_LENGTH = 170
+_PHYSICS_SPRING_STRENGTH = 0.035
+_PHYSICS_DAMPING = 0.35
+_PHYSICS_AVOID_OVERLAP = 1.0
+_STABILIZATION_ITERATIONS = 500
+
 
 def _build_pyvis_html(data: VisualizationData) -> str:
     from pyvis.network import Network
 
     net = Network(height="650px", width="100%", bgcolor="#ffffff", font_color="#222222", directed=True)
-    net.barnes_hut(spring_length=160)
+    net.set_options(f"""
+    var options = {{
+      "layout": {{
+        "improvedLayout": true
+      }},
+      "nodes": {{
+        "font": {{
+          "size": {_NODE_FONT_SIZE}
+        }},
+        "scaling": {{
+          "label": {{
+            "enabled": true,
+            "min": {_NODE_FONT_SIZE},
+            "max": {_NODE_FONT_SIZE},
+            "maxVisible": {_LABEL_MAX_VISIBLE},
+            "drawThreshold": {_LABEL_DRAW_THRESHOLD}
+          }}
+        }}
+      }},
+      "edges": {{
+        "font": {{
+          "size": {_EDGE_FONT_SIZE}
+        }},
+        "scaling": {{
+          "label": {{
+            "enabled": true,
+            "min": {_EDGE_FONT_SIZE},
+            "max": {_EDGE_FONT_SIZE},
+            "maxVisible": {_LABEL_MAX_VISIBLE},
+            "drawThreshold": {_LABEL_DRAW_THRESHOLD}
+          }}
+        }}
+      }},
+      "interaction": {{
+        "hover": true,
+        "navigationButtons": true,
+        "keyboard": true
+      }},
+      "physics": {{
+        "enabled": true,
+        "solver": "barnesHut",
+        "barnesHut": {{
+          "gravitationalConstant": {_PHYSICS_GRAVITY},
+          "centralGravity": {_PHYSICS_CENTRAL_GRAVITY},
+          "springLength": {_PHYSICS_SPRING_LENGTH},
+          "springConstant": {_PHYSICS_SPRING_STRENGTH},
+          "damping": {_PHYSICS_DAMPING},
+          "avoidOverlap": {_PHYSICS_AVOID_OVERLAP}
+        }},
+        "stabilization": {{
+          "enabled": true,
+          "iterations": {_STABILIZATION_ITERATIONS},
+          "updateInterval": 25,
+          "fit": true
+        }}
+      }}
+    }}
+    """)
 
     seen: set[str] = set()
     for node in data.graph.nodes:
@@ -39,18 +109,40 @@ def _build_pyvis_html(data: VisualizationData) -> str:
             color=color,
             title=f"type: {node.type}",
             shape="dot",
-            size=18,
+            size=_NODE_SIZE,
+            font={"size": _NODE_FONT_SIZE},
         )
         seen.add(node.id)
 
     for edge in data.graph.edges:
         if edge.source not in seen:
-            net.add_node(edge.source, label=edge.source, color="#7f7f7f", title="type: unknown")
+            net.add_node(
+                edge.source,
+                label=edge.source,
+                color="#7f7f7f",
+                title="type: unknown",
+                size=_NODE_SIZE,
+                font={"size": _NODE_FONT_SIZE},
+            )
             seen.add(edge.source)
         if edge.target not in seen:
-            net.add_node(edge.target, label=edge.target, color="#7f7f7f", title="type: unknown")
+            net.add_node(
+                edge.target,
+                label=edge.target,
+                color="#7f7f7f",
+                title="type: unknown",
+                size=_NODE_SIZE,
+                font={"size": _NODE_FONT_SIZE},
+            )
             seen.add(edge.target)
-        net.add_edge(edge.source, edge.target, label=edge.relation, title=edge.relation, arrows="to")
+        net.add_edge(
+            edge.source,
+            edge.target,
+            label=edge.relation,
+            title=edge.relation,
+            arrows="to",
+            font={"size": _EDGE_FONT_SIZE},
+        )
 
     tmp = Path(tempfile.mkdtemp()) / "graph.html"
     net.write_html(str(tmp), open_browser=False, notebook=False)
