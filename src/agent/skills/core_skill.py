@@ -28,7 +28,7 @@ def _write_task_status(topic: str, status: dict[str, Any]) -> None:
     os.makedirs(status_dir, exist_ok=True)
     status_file = f"{status_dir}/task_status.json"
     with open(status_file, "w", encoding="utf-8") as f:
-        json.dump(status, ensure_ascii=False, indent=2)
+        json.dump(status, f, ensure_ascii=False, indent=2)
 
 
 def _run_explorer(topic: Annotated[str, "要探索的研究领域或主题"]) -> str:

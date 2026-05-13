@@ -455,20 +455,23 @@ class BFSSearcher:
                         html = ar5iv.fetch_full_text(raw_id)
 
                     if html:
-                        # 解析 \cite{...} 或 \citeyearpar{...} 格式的引用
-                        cite_pattern = re_module.compile(r"\\cite[^{]*\{([^}]+)\}")
-                        cited_titles = cite_pattern.findall(html)
+                        # 解析 ar5iv HTML 中的参考文献条目
+                        # ar5iv 使用 <li id="bib.bib{N}"> 格式，每个条目包含作者、年份、标题
+                        bib_items = re_module.findall(
+                            r'<li id="bib\.bib(\d+)" class="ltx_bibitem">(.*?)</li>',
+                            html, re_module.DOTALL
+                        )
 
-                        # 取前 15 个引用标题（去重）
-                        seen_titles = set()
-                        ref_titles = []
-                        for ct in cited_titles:
-                            for t in ct.split(","):
-                                t = t.strip()
-                                if t and t not in seen_titles:
-                                    seen_titles.add(t)
-                                    ref_titles.append(t)
-                        ref_titles = ref_titles[:15]
+                        ref_titles: list[str] = []
+                        for bid, content_block in bib_items[:15]:
+                            # 提取标题：第二个 ltx_bibblock（第一个是作者行）
+                            blocks = re_module.findall(
+                                r'class="ltx_bibblock">(.*?)<', content_block, re_module.DOTALL
+                            )
+                            if len(blocks) > 1:
+                                title = re_module.sub(r'<[^>]+>', '', blocks[1]).strip()
+                                if title:
+                                    ref_titles.append(title)
 
                         if ref_titles:
                             nodes = self._fetch_refs_by_titles(ref_titles, paper)
@@ -689,16 +692,25 @@ class BFSSearcher:
 
 
 def _extract_arxiv_id(url: str) -> str:
-    """从 URL 中提取 arXiv ID
+    """从 URL 或纯 ID 字符串中提取 arXiv ID
 
     支持格式:
       - https://arxiv.org/abs/2301.00001
       - https://arxiv.org/abs/2301.00001v2
-      - http://arxiv.org/abs/2301.00001
-      - 2301.00001
+      - ArXiv:2501.08008 / arXiv:2411.04358v1（带前缀纯ID）
+      - 2301.00001 / 2501.08008（纯数字格式）
     """
     if not url:
         return ""
     import re
-    m = re.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", url)
-    return m.group(1) if m else ""
+    # 去除常见前缀标签（ArXiv: / arXiv: / arxiv:）
+    cleaned = re.sub(r"^(arxiv|ArXiv|arXiv):", "", url).strip()
+    # 先尝试 URL 提取
+    m = re.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", cleaned)
+    if m:
+        return m.group(1)
+    # 纯数字 ID（如 "2501.08008" 或 "2411.04358v1"）
+    m = re.match(r"^(\d{4}\.\d+)", cleaned)
+    if m:
+        return m.group(1)
+    return ""
