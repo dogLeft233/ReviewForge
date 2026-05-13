@@ -1,0 +1,372 @@
+{
+  "topic": "ASR自动语音识别",
+  "overview": {
+    "definition": "自动语音识别（ASR）是将语音信号转换为文本的技术，广泛应用于语音助手、实时字幕、语音翻译等领域。传统ASR系统基于统计模型，如高斯混合模型（GMM）与隐马尔可夫模型（HMM），近年来深度学习推动了端到端模型的兴起，包括CTC、注意力机制的编码器-解码器模型以及RNN-T架构。Transformer和Conformer等自注意力模型进一步提升了性能。现代ASR系统还采用自监督学习（如wav2vec 2.0）和大规模弱监督模型（如Whisper），显著减少对标注数据的依赖。",
+    "core_questions": [],
+    "key_concepts": [
+      "端到端模型",
+      "自监督学习",
+      "Transformer架构",
+      "Word Error Rate (WER)"
+    ],
+    "key_concept_explanations": {
+      "端到端模型": "端到端模型",
+      "自监督学习": "自监督学习",
+      "Transformer架构": "Transformer架构",
+      "Word Error Rate (WER)": "Word Error Rate (WER)"
+    }
+  },
+  "timeline": [
+    {
+      "year": 2014,
+      "title": "Deep Speech: Scaling up end-to-end speech recognition",
+      "category": "",
+      "description": "提出了端到端的深度学习ASR模型，显著提升了语音识别性能。",
+      "related_papers": [
+        "p_deep_speech_scaling_up_end_to_end_spee"
+      ]
+    },
+    {
+      "year": 2020,
+      "title": "wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations",
+      "category": "",
+      "description": "引入自监督学习框架，减少对标注数据的依赖。",
+      "related_papers": [
+        "p_wav2vec_2_0_a_framework_for_self_super"
+      ]
+    }
+  ],
+  "methods": [],
+  "papers": [
+    {
+      "id": "p_deep_speech_scaling_up_end_to_end_spee",
+      "title": "Deep Speech: Scaling up end-to-end speech recognition",
+      "year": 2014,
+      "authors": "Baidu Research",
+      "venue": "NeurIPS",
+      "summary": "提出了端到端的深度学习ASR模型，显著提升了语音识别性能。",
+      "url": ""
+    },
+    {
+      "id": "p_wav2vec_2_0_a_framework_for_self_super",
+      "title": "wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations",
+      "year": 2020,
+      "authors": "Facebook AI",
+      "venue": "NeurIPS",
+      "summary": "引入自监督学习框架，减少对标注数据的依赖。",
+      "url": ""
+    }
+  ],
+  "benchmarks": [
+    {
+      "model": "PazaBench",
+      "dataset": "多语言数据集",
+      "metric": "WER",
+      "score": 0.0,
+      "year": 0,
+      "url": "https://www.microsoft.com/en-us/research/blog/paza-introducing-automatic-speech-recognition-benchmarks-and-models-for-low-resource-languages/",
+      "description": "专注于低资源语言的ASR基准测试。"
+    }
+  ],
+  "frontiers": [],
+  "resources": [
+    {
+      "id": "r_https_arxiv_org_html_2510_12827v1",
+      "name": "2510.12827v1",
+      "type": "paper",
+      "url": "https://arxiv.org/html/2510.12827v1",
+      "description": "- https://arxiv.org/html/2510.12827v1",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_sciencedirect_com_science_ar",
+      "name": "S2666307424000573",
+      "type": "resource",
+      "url": "https://www.sciencedirect.com/science/article/pii/S2666307424000573",
+      "description": "- https://www.sciencedirect.com/science/article/pii/S2666307424000573",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_link_springer_com_article_10_100",
+      "name": "s11042-025-20998-6",
+      "type": "resource",
+      "url": "https://link.springer.com/article/10.1007/s11042-025-20998-6",
+      "description": "- https://link.springer.com/article/10.1007/s11042-025-20998-6",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_boundev_ai_blog_automatic_sp",
+      "name": "automatic-speech-recognition-asr-guide",
+      "type": "resource",
+      "url": "https://www.boundev.ai/blog/automatic-speech-recognition-asr-guide",
+      "description": "- https://www.boundev.ai/blog/automatic-speech-recognition-asr-guide",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_colabcodes_com_post_automati",
+      "name": "automatic-speech-recognition-asr",
+      "type": "resource",
+      "url": "https://www.colabcodes.com/post/automatic-speech-recognition-asr",
+      "description": "- https://www.colabcodes.com/post/automatic-speech-recognition-asr",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_blog_gopenai_com_a_complete_guid",
+      "name": "a-complete-guide-to-benchmarking-automatic-speech-recognition-asr-systems-fc78f43f4967",
+      "type": "resource",
+      "url": "https://blog.gopenai.com/a-complete-guide-to-benchmarking-automatic-speech-recognition-asr-systems-fc78f43f4967",
+      "description": "- https://blog.gopenai.com/a-complete-guide-to-benchmarking-automatic-speech-recognition-asr-systems-fc78f43f4967",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_assemblyai_com_blog_what_is_",
+      "name": "what-is-asr",
+      "type": "resource",
+      "url": "https://www.assemblyai.com/blog/what-is-asr",
+      "description": "- https://www.assemblyai.com/blog/what-is-asr",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_microsoft_com_en_us_research",
+      "name": "paza-introducing-automatic-speech-recognition-benchmarks-and-models-for-low-resource-languages",
+      "type": "resource",
+      "url": "https://www.microsoft.com/en-us/research/blog/paza-introducing-automatic-speech-recognition-benchmarks-and-models-for-low-resource-languages/",
+      "description": "- https://www.microsoft.com/en-us/research/blog/paza-introducing-automatic-speech-recognition-benchmarks-and-models-for-low-resource-languages/",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_ieeexplore_ieee_org_document_106",
+      "name": "10674831",
+      "type": "resource",
+      "url": "https://ieeexplore.ieee.org/document/10674831",
+      "description": "- https://ieeexplore.ieee.org/document/10674831",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_www_gladia_io_blog_best_open_sou",
+      "name": "best-open-source-speech-to-text-models",
+      "type": "resource",
+      "url": "https://www.gladia.io/blog/best-open-source-speech-to-text-models",
+      "description": "- https://www.gladia.io/blog/best-open-source-speech-to-text-models",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_deepwiki_com_espnet_espnet_4_asr",
+      "name": "4-asr:-automatic-speech-recognition",
+      "type": "resource",
+      "url": "https://deepwiki.com/espnet/espnet/4-asr:-automatic-speech-recognition",
+      "description": "- https://deepwiki.com/espnet/espnet/4-asr:-automatic-speech-recognition",
+      "related_methods": [],
+      "related_papers": []
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "t_asr自动语音识别",
+        "label": "ASR自动语音识别",
+        "type": "topic"
+      },
+      {
+        "id": "p_deep_speech_scaling_up_end_to_end_spee",
+        "label": "Deep Speech: Scaling up end-to-end speech rec",
+        "type": "paper"
+      },
+      {
+        "id": "p_wav2vec_2_0_a_framework_for_self_super",
+        "label": "wav2vec 2.0: A Framework for Self-Supervised ",
+        "type": "paper"
+      },
+      {
+        "id": "bm_pazabench_多语言数据集_0",
+        "label": "PazaBench",
+        "type": "benchmark"
+      },
+      {
+        "id": "d_多语言数据集",
+        "label": "多语言数据集",
+        "type": "dataset"
+      },
+      {
+        "id": "metric_wer",
+        "label": "WER",
+        "type": "metric"
+      },
+      {
+        "id": "r_https_arxiv_org_html_2510_12827v1",
+        "label": "2510.12827v1",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_sciencedirect_com_science_ar",
+        "label": "S2666307424000573",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_link_springer_com_article_10_100",
+        "label": "s11042-025-20998-6",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_boundev_ai_blog_automatic_sp",
+        "label": "automatic-speech-recognition-asr-guide",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_colabcodes_com_post_automati",
+        "label": "automatic-speech-recognition-asr",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_blog_gopenai_com_a_complete_guid",
+        "label": "a-complete-guide-to-benchmarking-automatic-speech-recognition-asr-systems-fc78f43f4967",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_assemblyai_com_blog_what_is_",
+        "label": "what-is-asr",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_microsoft_com_en_us_research",
+        "label": "paza-introducing-automatic-speech-recognition-benchmarks-and-models-for-low-resource-languages",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_ieeexplore_ieee_org_document_106",
+        "label": "10674831",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_gladia_io_blog_best_open_sou",
+        "label": "best-open-source-speech-to-text-models",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_deepwiki_com_espnet_espnet_4_asr",
+        "label": "4-asr:-automatic-speech-recognition",
+        "type": "resource"
+      }
+    ],
+    "edges": [
+      {
+        "source": "p_deep_speech_scaling_up_end_to_end_spee",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_wav2vec_2_0_a_framework_for_self_super",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "bm_pazabench_多语言数据集_0",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "bm_pazabench_多语言数据集_0",
+        "target": "d_多语言数据集",
+        "relation": "evaluated_on"
+      },
+      {
+        "source": "bm_pazabench_多语言数据集_0",
+        "target": "metric_wer",
+        "relation": "uses"
+      },
+      {
+        "source": "r_https_arxiv_org_html_2510_12827v1",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_sciencedirect_com_science_ar",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_link_springer_com_article_10_100",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_boundev_ai_blog_automatic_sp",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_colabcodes_com_post_automati",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_blog_gopenai_com_a_complete_guid",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_assemblyai_com_blog_what_is_",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_microsoft_com_en_us_research",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_ieeexplore_ieee_org_document_106",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_www_gladia_io_blog_best_open_sou",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_deepwiki_com_espnet_espnet_4_asr",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      }
+    ]
+  },
+  "needs_research": [
+    {
+      "target": "overview.core_questions",
+      "reason": "未在 stage1_concepts/downstream_report 中检索到核心问题",
+      "hint": "列出 ASR自动语音识别 的 3-5 个核心研究问题"
+    },
+    {
+      "target": "methods",
+      "reason": "未从 stage1_concepts 或 writer_report.body 中识别出方法类条目",
+      "hint": "按主流技术路线列出 4-8 个方法，并为每个方法关联代表论文"
+    },
+    {
+      "target": "paper:p_deep_speech_scaling_up_end_to_end_spee.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Deep Speech: Scaling up end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_wav2vec_2_0_a_framework_for_self_super.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations"
+    },
+    {
+      "target": "frontiers",
+      "reason": "no frontier trends parsed from stage3 reports",
+      "hint": "List 5-8 current frontier directions for ASR自动语音识别"
+    }
+  ],
+  "quality_report": {}
+}
