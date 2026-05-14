@@ -9,7 +9,9 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 os.environ["PYTHONPATH"] = str(_ROOT) + "/src"
-os.environ["BOCHA_API_KEY"] = "sk-grnzvqmqpizcjwszwfuyirfhwocbopgwhcibkitmrpsoauye"
+
+from src.config import settings
+os.environ["BOCHA_API_KEY"] = os.environ.get("BOCHA_API_KEY") or settings.bocha_api_key or ""
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -33,8 +35,8 @@ def main():
 
     print(f"\n⏳ 正在探索领域：{topic}，请稍候...\n")
 
-    api_key = os.environ.get("BOCHA_API_KEY", "sk-grnzvqmqpizcjwszwfuyirfhwocbopgwhcibkitmrpsoauye")
-    llm = LLM(api_key=api_key, model="Qwen/Qwen3-8B", timeout_seconds=300.0, max_tokens=4096)
+    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("BOCHA_API_KEY") or settings.llm_api_key or ""
+    llm = LLM(api_key=api_key, model=settings.llm_model, base_url=settings.llm_base_url, timeout_seconds=300.0, max_tokens=4096)
     explorer = ExplorerAgent(llm=llm, verbose=True)
 
     try:

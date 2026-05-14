@@ -60,6 +60,9 @@ class WriterReport:
     benchmarks: str = ""
     trends: str = ""
 
+    # ── 知识图谱关系（从正文中抽取）───────────────────────
+    graph_relations: str = ""  # LLM抽取的JSON格式图谱关系
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 主 Agent
@@ -109,6 +112,10 @@ class WriterAgent:
         # 先设置 plan（所有章节的 format 模板都依赖它）
         report.plan = plan_result["plan"]
         self._write_chapters(topic, explorer_report, report)
+
+        # 阶段 2：知识图谱关系抽取（从正文中用LLM分析）
+        graph_relations = self._extract_knowledge_graph(topic, explorer_report, report)
+        report.graph_relations = graph_relations
 
         logger.info("Writer 完成！")
         return report
@@ -453,3 +460,87 @@ class WriterAgent:
             if line and len(line) < 15:
                 keywords.append(line)
         return keywords[:7]
+
+    def _extract_knowledge_graph(
+        self, topic: str, er: ExplorerReport, report: WriterReport,
+    ) -> str:
+        """从WriterReport正文中用LLM抽取知识图谱关系"""
+        # 构建论文列表文本
+        papers_text = "\n".join(
+            f"- {c.title} ({c.year}): {c.key_idea or ''}"
+            for c in (er.stage2_classics or [])[:20]
+        ) or "（无论文数据）"
+
+        # 构建方法列表文本
+        methods_text = "\n".join(
+            f"- {m.name} ({m.category or '未分类'})"
+            for m in (er.stage1_methods or [])[:20]
+        ) if hasattr(er, "stage1_methods") and er.stage1_methods else "（无方法数据）"
+
+        # 构建benchmark文本
+        benchmarks_text = "\n".join(
+            f"- {b.name}: {b.metric} on {b.dataset}"
+            for b in (er.stage3_benchmarks or [])[:20]
+        ) if hasattr(er, "stage3_benchmarks") and er.stage3_benchmarks else "（无benchmark数据）"
+
+        system = _load_prompt("graph_system.txt").format(
+            topic=topic,
+            papers_text=papers_text,
+            methods_text=methods_text,
+            benchmarks_text=benchmarks_text,
+            body_text=f"{report.body[:8000]}\n\n{report.conclusion[:2000]}",
+        )
+        user = _load_prompt("graph_user.txt").format(topic=topic)
+
+        messages = [
+            Message(role="system", content=system),
+            Message(role="user", content=user),
+        ]
+
+        reply = self.llm.chat(
+            external_prompt="你是一个知识图谱构建专家，请从综述内容中抽取知识图谱关系，输出严格JSON格式。",
+            messages=messages,
+            temperature=0.1,
+            max_tokens=2000,
+        )
+
+        # 尝试解析JSON并验证格式
+        try:
+            import json
+            import re
+
+            # 提取JSON块
+            json_match = None
+            for line in reply.split("\n"):
+                if line.strip().startswith("{"):
+                    bracket_count = 0
+                    start_idx = reply.find(line.strip())
+                    for i in range(start_idx, len(reply)):
+                        if reply[i] == "{":
+                            bracket_count += 1
+                        elif reply[i] == "}":
+                            bracket_count -= 1
+                            if bracket_count == 0:
+                                json_str = reply[start_idx:i+1]
+                                json_match = json_str
+                                break
+                    break
+
+            if json_match:
+                # 修复：LLM 可能返回 Python dict 风格（key: value），需要转成 "key": value
+                fixed = re.sub(r'(\w+)(\s*:)', r'"\1"\2', json_match)
+                data = json.loads(fixed)
+                # 验证必要字段
+                if not isinstance(data.get("paper_relations"), list):
+                    data["paper_relations"] = []
+                if not isinstance(data.get("method_comparisons"), list):
+                    data["method_comparisons"] = []
+                if not isinstance(data.get("evolution_chains"), list):
+                    data["evolution_chains"] = []
+                if not isinstance(data.get("concept_hierarchy"), list):
+                    data["concept_hierarchy"] = []
+                return json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("知识图谱关系解析失败: %s", e)
+
+        return ""

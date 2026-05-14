@@ -419,12 +419,26 @@ class ChatAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "explorer_overview",
-                    "description": "探索给定学术领域的概况、核心问题和主流方法。当用户询问某个领域的基本介绍、发展历史、核心概念时使用。",
+                    "name": "run_pipeline",
+                    "description": "执行完整流水线：Explorer → Searcher → Writer。依次执行领域探索、文献检索、综述撰写，耗时较长（约10-20分钟）。",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "topic": {"type": "string", "description": "要探索的学术领域或主题"},
+                            "topic": {"type": "string", "description": "要执行完整流水线的研究领域"},
+                        },
+                        "required": ["topic"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_pipeline_async",
+                    "description": "异步执行完整流水线，立即返回任务ID，后台执行不阻塞。完成后写入 tmp/{topic}/step3_writer_done.json。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {"type": "string", "description": "要执行完整流水线的研究领域"},
                         },
                         "required": ["topic"],
                     },
@@ -461,46 +475,14 @@ class ChatAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "bfs_search",
-                    "description": "深度论文发现工具，使用 BFS（广度优先搜索）发现某领域的所有重要论文及其引用关系。",
+                    "name": "run_searcher",
+                    "description": "执行 Searcher 阶段（文献检索），依赖 tmp/{topic}/step1_explorer_done.json。使用 Explorer 结果生成更精准的搜索词。",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "question": {"type": "string", "description": "研究问题或主题"},
-                            "expand_layers": {"type": "integer", "description": "BFS 扩展层数，0=只用搜索不扩展引文，1=搜索+一层引文，2=两层（默认2）", "default": 2},
-                            "search_papers_count": {"type": "integer", "description": "每个搜索词取多少篇论文", "default": 20},
+                            "topic": {"type": "string", "description": "要执行文献搜索的研究领域"},
                         },
-                        "required": ["question"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "bfs_search_async",
-                    "description": "异步执行 BFS 深度论文发现，立即返回任务ID，后台执行不阻塞，完成自动写入 step2_searcher_done.json 供其他 Tab 加载。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "question": {"type": "string", "description": "研究问题或主题"},
-                            "expand_layers": {"type": "integer", "description": "BFS 扩展层数，0=只用搜索，1=一层引文，2=两层（默认2）", "default": 2},
-                            "search_papers_count": {"type": "integer", "description": "每个搜索词取多少篇论文", "default": 20},
-                        },
-                        "required": ["question"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "multi_source_search",
-                    "description": "多源检索工具，同时搜索 GitHub（项目）、HuggingFace（模型+数据集）和 arXiv（论文）。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "question": {"type": "string", "description": "研究问题或技术主题"},
-                        },
-                        "required": ["question"],
+                        "required": ["topic"],
                     },
                 },
             },

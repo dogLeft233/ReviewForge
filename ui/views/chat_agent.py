@@ -133,19 +133,19 @@ def render(data: VisualizationData) -> None:
 
                 # 检测异步任务响应，注册到 pending_tasks
                 import re
-                if "⏳ 领域探索任务已启动" in full_response:
-                    match = re.search(r"topic:\s*([^（）]+)", full_response)
+                if "⏳ 完整流水线任务已启动" in full_response:
+                    match = re.search(r"topic:\s*([^）]+)", full_response)
                     topic = match.group(1).strip() if match else prompt
                     st.session_state["pending_tasks"].append({
-                        "type": "run_explorer_async",
+                        "type": "run_pipeline_async",
                         "topic": topic,
                         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                     })
-                elif "⏳ BFS 搜索任务已启动" in full_response:
-                    match = re.search(r"question:\s*([^（）]+)", full_response)
+                elif "⏳ 领域探索任务已启动" in full_response:
+                    match = re.search(r"topic:\s*([^）]+)", full_response)
                     topic = match.group(1).strip() if match else prompt
                     st.session_state["pending_tasks"].append({
-                        "type": "bfs_search_async",
+                        "type": "run_explorer_async",
                         "topic": topic,
                         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                     })
@@ -155,7 +155,24 @@ def render(data: VisualizationData) -> None:
         # 将助手回答加入历史
         st.session_state["chat_messages"].append({"role": "assistant", "content": full_response})
 
-        # ── 异步任务状态轮询 ──────────────────────────────────────────────────────
+        # ── 检查 sync run_pipeline 完成状态 ───────────────────────────────
+        pipeline_done = st.session_state.get("_pipeline_completed")
+        if pipeline_done:
+            topic = pipeline_done.get("topic", "")
+            slug = pipeline_done.get("slug", "")
+            status_file = f"tmp/{slug}/task_status.json"
+            if os.path.exists(status_file):
+                with open(status_file, encoding="utf-8") as f:
+                    status = json.load(f)
+                if status.get("status") == "completed":
+                    task_for_load = {"topic": topic, "type": "run_pipeline_async", "slug": slug}
+                    del st.session_state["_pipeline_completed"]
+                    _load_task_result(task_for_load)
+                    return
+            if "_pipeline_completed" in st.session_state:
+                del st.session_state["_pipeline_completed"]
+
+        # ── 异步任务状态轮询 ──────────────────────────────────────────
         pending = st.session_state.get("pending_tasks", [])
         if pending:
             st.divider()
@@ -163,18 +180,44 @@ def render(data: VisualizationData) -> None:
 
             still_pending = []
             for task in pending:
+                from scripts.run_pipeline import _slugify
                 topic = task["topic"]
-                task_dir = f"tmp/{topic}"
+                slug = task.get("slug") or _slugify(topic)
+                task_dir = f"tmp/{slug}"
                 status_file = f"{task_dir}/task_status.json"
 
                 if os.path.exists(status_file):
                     with open(status_file, encoding="utf-8") as f:
                         status = json.load(f)
 
+                    stage = status.get("stage", "")
+                    progress = status.get("progress", 0)
+                    message = status.get("message", "处理中...")
+
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.info(f"**{status.get('message', '处理中...')}**")
-                        st.progress(status.get("progress", 0), text=f"进度 {int(status.get('progress', 0)*100)}%")
+                        # 显示当前阶段和进度
+                        stage_emoji = {
+                            "init": "🚀",
+                            "stage1_explorer": "🔍",
+                            "stage1_explorer_done": "✅",
+                            "stage2_searcher": "📚",
+                            "stage2_searcher_done": "✅",
+                            "stage3_writer": "✍️",
+                            "stage3_writer_done": "✅",
+                            "complete": "🎉",
+                        }.get(stage, "⏳")
+
+                        st.info(f"**{stage_emoji} {message}**")
+                        st.progress(progress, text=f"进度 {int(progress * 100)}%")
+
+                        # 显示阶段统计信息
+                        if stage == "stage1_explorer_done" and "explorer_stats" in status:
+                            stats = status["explorer_stats"]
+                            st.caption(f"   查询: {stats.get('queries', 0)} | 概念: {stats.get('concepts', 0)} | 经典: {stats.get('classics', 0)} | Benchmark: {stats.get('benchmarks', 0)}")
+                        elif stage == "stage2_searcher_done" and "searcher_stats" in status:
+                            stats = status["searcher_stats"]
+                            st.caption(f"   论文: {stats.get('papers_count', 0)} | 耗时: {stats.get('searcher_time', 0):.1f}s")
                     with col2:
                         st.caption(f"⏱ {status.get('started_at', '')}")
 
@@ -183,6 +226,8 @@ def render(data: VisualizationData) -> None:
                         _load_task_result(task)
                     elif status.get("status") == "failed":
                         st.error(f"❌ 失败: {status.get('message', '未知错误')}")
+                        if "error" in status:
+                            st.caption(f"错误详情: {status['error']}")
                     else:
                         still_pending.append(task)
                 else:
@@ -194,18 +239,33 @@ def render(data: VisualizationData) -> None:
 
 def _load_task_result(task: dict) -> None:
     """加载任务结果到 session_state（供其他 Tab 使用）"""
+    from scripts.run_pipeline import _slugify
     topic = task["topic"]
-    if task["type"] == "run_explorer_async":
-        result_file = f"tmp/{topic}/step1_explorer_done.json"
+    slug = task.get("slug") or _slugify(topic)
+    task_type = task.get("type", "")
+
+    if task_type == "run_pipeline_async":
+        result_file = f"tmp/{slug}/step3_writer_done.json"
+        if os.path.exists(result_file):
+            with open(result_file, encoding="utf-8") as f:
+                data = json.load(f)
+            viz_data = data.get("visualization_data") or data
+            st.session_state["visualization_data"] = viz_data
+            st.rerun()
+    elif task_type == "run_explorer_async":
+        # step1_explorer_done.json 是 PipelineResult，需要用 script_adapter 转换
+        result_file = f"tmp/{slug}/step1_explorer_done.json"
+        if os.path.exists(result_file):
+            with open(result_file, encoding="utf-8") as f:
+                data = json.load(f)
+            from src.adapter.script_adapter import writer_json_to_visualization
+            viz_data = writer_json_to_visualization(data)
+            st.session_state["visualization_data"] = viz_data.model_dump(mode="json")
+            st.rerun()
+    elif task_type == "run_searcher_async":
+        result_file = f"tmp/{slug}/step2_searcher_done.json"
         if os.path.exists(result_file):
             with open(result_file, encoding="utf-8") as f:
                 data = json.load(f)
             st.session_state["visualization_data"] = data
-            st.rerun()
-    elif task["type"] == "bfs_search_async":
-        result_file = f"tmp/{topic}/step2_searcher_done.json"
-        if os.path.exists(result_file):
-            with open(result_file, encoding="utf-8") as f:
-                data = json.load(f)
-            st.session_state["bfs_search_data"] = data
             st.rerun()

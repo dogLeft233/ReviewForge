@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -1331,6 +1332,243 @@ def _build_graph(
     return KnowledgeGraph(nodes=nodes, edges=edges)
 
 
+def _parse_graph_relations(graph_relations: str) -> dict[str, Any]:
+    """解析 graph_relations JSON 字符串"""
+    if not graph_relations:
+        return {
+            "paper_relations": [],
+            "method_comparisons": [],
+            "evolution_chains": [],
+            "concept_hierarchy": [],
+        }
+    try:
+        # 尝试直接解析
+        data = json.loads(graph_relations)
+        return {
+            "paper_relations": data.get("paper_relations", []),
+            "method_comparisons": data.get("method_comparisons", []),
+            "evolution_chains": data.get("evolution_chains", []),
+            "concept_hierarchy": data.get("concept_hierarchy", []),
+        }
+    except json.JSONDecodeError:
+        # 尝试提取 JSON 块
+        try:
+            for line in graph_relations.split("\n"):
+                if line.strip().startswith("{"):
+                    start = graph_relations.find(line.strip())
+                    for i in range(start, len(graph_relations)):
+                        if graph_relations[i] == "{":
+                            bracket_count = 0
+                            for j in range(i, len(graph_relations)):
+                                if graph_relations[j] == "{":
+                                    bracket_count += 1
+                                elif graph_relations[j] == "}":
+                                    bracket_count -= 1
+                                    if bracket_count == 0:
+                                        json_str = graph_relations[i:j+1]
+                                        data = json.loads(json_str)
+                                        return {
+                                            "paper_relations": data.get("paper_relations", []),
+                                            "method_comparisons": data.get("method_comparisons", []),
+                                            "evolution_chains": data.get("evolution_chains", []),
+                                            "concept_hierarchy": data.get("concept_hierarchy", []),
+                                        }
+                                        break
+                    break
+        except Exception:
+            pass
+    return {
+        "paper_relations": [],
+        "method_comparisons": [],
+        "evolution_chains": [],
+        "concept_hierarchy": [],
+    }
+
+
+def _build_enhanced_graph(
+    topic: str,
+    methods: list[Method],
+    papers: list[Paper],
+    benchmarks: list[Benchmark],
+    frontiers: list[Frontier],
+    resources: list[Resource] | None,
+    relations: dict[str, Any],
+) -> KnowledgeGraph:
+    """构建增强版知识图谱（包含 LLM 抽取的关系）"""
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    seen: set[str] = set()
+    edge_seen: set[tuple[str, str, str]] = set()
+
+    def add(nid: str, label: str, ntype: str) -> None:
+        if nid in seen:
+            return
+        seen.add(nid)
+        nodes.append(GraphNode(id=nid, label=label, type=ntype))  # type: ignore[arg-type]
+
+    def connect(source: str, target: str, relation: str) -> None:
+        key = (source, target, relation)
+        if source == target or key in edge_seen:
+            return
+        edge_seen.add(key)
+        edges.append(GraphEdge(source=source, target=target, relation=relation))  # type: ignore[arg-type]
+
+    topic_id = _slug(topic, prefix="t_")
+    add(topic_id, topic, "topic")
+
+    # ── 1. 基础节点：方法分类 ───────────────────────────────────
+    cat_ids: dict[str, str] = {}
+    for method in methods:
+        if method.category:
+            cid = cat_ids.setdefault(method.category, _slug(method.category, prefix="c_"))
+            add(cid, method.category, "concept")
+            connect(cid, topic_id, "belongs_to")
+        add(method.id, method.name, "method")
+        connect(method.id, cat_ids.get(method.category, topic_id), "belongs_to")
+
+    # ── 2. 论文节点 ────────────────────────────────────────────
+    paper_lookup = {p.id: p for p in papers}
+    paper_title_to_id: dict[str, str] = {}
+    for paper in papers:
+        add(paper.id, paper.title[:45] or paper.id, "paper")
+        paper_title_to_id[paper.title.lower()] = paper.id
+
+    # ── 3. Benchmark 节点 ──────────────────────────────────────
+    for i, bench in enumerate(benchmarks):
+        bid = _slug(f"{bench.model}_{bench.dataset}_{i}", prefix="bm_")
+        label = f"{bench.model or '(unknown)'} ({bench.score}{bench.metric})" if bench.score else (bench.model or f"benchmark {i + 1}")
+        add(bid, label, "benchmark")
+        connect(bid, topic_id, "related_to")
+        if bench.dataset:
+            did = _slug(bench.dataset, prefix="d_")
+            add(did, bench.dataset, "dataset")
+            connect(bid, did, "evaluated_on")
+        if bench.metric:
+            mid = _slug(bench.metric, prefix="metric_")
+            add(mid, bench.metric, "metric")
+            connect(bid, mid, "uses")
+        for method in methods:
+            if _has_text_hit(method.name, bench.model):
+                connect(bid, method.id, "uses")
+                break
+
+    # ── 4. Frontier 节点 ───────────────────────────────────────
+    for i, frontier in enumerate(frontiers):
+        fid = _slug(frontier.name or f"frontier_{i}", prefix="tr_")
+        add(fid, frontier.name, "trend")
+        connect(fid, topic_id, "related_to")
+        for method_id in frontier.related_methods:
+            connect(fid, method_id, "related_to")
+        for paper_id in frontier.related_papers:
+            if paper_id in paper_lookup:
+                connect(fid, paper_id, "related_to")
+
+    # ── 5. Resource 节点 ───────────────────────────────────────
+    for resource in resources or []:
+        add(resource.id, resource.name, "resource")
+        connect(resource.id, topic_id, "related_to")
+        for method_id in resource.related_methods:
+            connect(resource.id, method_id, "related_to")
+        for paper_id in resource.related_papers:
+            if paper_id in paper_lookup:
+                connect(resource.id, paper_id, "related_to")
+
+    # ── 6. LLM 抽取的论文间关系 ────────────────────────────────
+    for rel in relations.get("paper_relations", []):
+        paper_a_title = rel.get("paper_a", "")
+        paper_b_title = rel.get("paper_b", "")
+        relation_type = rel.get("relation", "related_to")
+
+        # 尝试通过标题匹配论文节点
+        aid = paper_title_to_id.get(paper_a_title.lower())
+        bid = paper_title_to_id.get(paper_b_title.lower())
+
+        if aid and bid:
+            # 映射关系类型到 EdgeRelation
+            edge_rel = _map_relation_to_edge_type(relation_type)
+            connect(aid, bid, edge_rel)
+
+    # ── 7. LLM 抽取的方法对比关系 ──────────────────────────────
+    for comp in relations.get("method_comparisons", []):
+        winner = comp.get("winner", "")
+        loser = comp.get("loser", "")
+
+        # 尝试匹配方法节点
+        winner_id = _find_method_id(methods, winner)
+        loser_id = _find_method_id(methods, loser)
+
+        if winner_id and loser_id:
+            connect(winner_id, loser_id, "compares_with")
+
+    # ── 8. LLM 抽取的技术演进链 ────────────────────────────────
+    for chain_data in relations.get("evolution_chains", []):
+        chain = chain_data.get("chain", [])
+        if len(chain) >= 2:
+            # 构建演进链边
+            for i in range(len(chain) - 1):
+                prev_id = _find_method_id(methods, chain[i])
+                next_id = _find_method_id(methods, chain[i + 1])
+                if prev_id and next_id:
+                    connect(prev_id, next_id, "succeeds")
+
+    # ── 9. LLM 抽取的概念层次结构 ─────────────────────────────
+    for hier in relations.get("concept_hierarchy", []):
+        concept = hier.get("concept", "")
+        sub_concepts = hier.get("sub_concepts", [])
+        parent = hier.get("parent", "")
+
+        # 创建概念节点
+        concept_id = _slug(concept, prefix="c_")
+        add(concept_id, concept, "concept")
+
+        if parent:
+            parent_id = _slug(parent, prefix="c_")
+            add(parent_id, parent, "concept")
+            connect(concept_id, parent_id, "belongs_to")
+
+        # 连接子概念
+        for sub in sub_concepts:
+            sub_id = _slug(sub, prefix="c_")
+            add(sub_id, sub, "concept")
+            connect(sub_id, concept_id, "belongs_to")
+
+    # ── 10. 论文与方法的基础关联（原有逻辑）───────────────────
+    for paper in papers:
+        connected = False
+        for method in methods:
+            if paper.id in method.papers or _has_text_hit(method.name, f"{paper.title} {paper.summary}"):
+                connect(paper.id, method.id, "proposes")
+                connected = True
+        if not connected:
+            connect(paper.id, topic_id, "related_to")
+
+    return KnowledgeGraph(nodes=nodes, edges=edges)
+
+
+def _map_relation_to_edge_type(relation: str) -> str:
+    """将 LLM 抽取的关系类型映射到 EdgeRelation"""
+    mapping = {
+        "cites": "cites",
+        "improves_on": "improves_on",
+        "competes_with": "competes_with",
+        "complementary": "complementary",
+        "succeeds": "succeeds",
+        "related_to": "related_to",
+    }
+    return mapping.get(relation.lower(), "related_to")
+
+
+def _find_method_id(methods: list[Method], name: str) -> str | None:
+    """通过名称模糊匹配方法节点 ID"""
+    if not name:
+        return None
+    name_lower = name.lower()
+    for method in methods:
+        if name_lower in method.name.lower() or method.name.lower() in name_lower:
+            return method.id
+    return None
+
+
 def rebuild_graph(viz: VisualizationData) -> VisualizationData:
     """Rebuild graph from the current refined entities."""
 
@@ -1339,8 +1577,13 @@ def rebuild_graph(viz: VisualizationData) -> VisualizationData:
     })
 
 
-def writer_json_to_visualization(raw: dict[str, Any]) -> VisualizationData:
-    """Enhanced conversion from step3_writer_done.json to VisualizationData."""
+def writer_json_to_visualization(raw: dict[str, Any], graph_relations: str = "") -> VisualizationData:
+    """Enhanced conversion from step3_writer_done.json to VisualizationData.
+
+    Args:
+        raw: step3_writer_done.json 原始数据
+        graph_relations: WriterReport.graph_relations (LLM抽取的JSON格式图谱关系)
+    """
 
     topic = str(raw.get("topic") or "Unknown Topic")
     pending: list[ResearchTask] = []
@@ -1355,7 +1598,14 @@ def writer_json_to_visualization(raw: dict[str, Any]) -> VisualizationData:
     timeline = _build_timeline(raw, papers, title_to_id, pending)
     benchmarks = _build_benchmarks(raw, pending)
     frontiers = _link_frontiers(_build_frontiers(raw, pending, resources), methods, papers)
-    graph = _build_graph(topic, methods, papers, benchmarks, frontiers, resources)
+
+    # 解析 graph_relations
+    parsed_relations = _parse_graph_relations(graph_relations)
+
+    # 构建图谱（支持增强关系）
+    graph = _build_enhanced_graph(
+        topic, methods, papers, benchmarks, frontiers, resources, parsed_relations
+    )
 
     return VisualizationData(
         topic=topic,

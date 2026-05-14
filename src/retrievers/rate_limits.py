@@ -102,11 +102,11 @@ SOURCE_RATE_LIMITS: dict[str, SourceRateLimit] = {
         note="Wikipedia API 相对宽松",
     ),
     "ar5iv": SourceRateLimit(
-        min_interval_seconds=0.0,
-        burst=10,
+        min_interval_seconds=1.0,
+        burst=1,
         requires_key=False,
-        key_concurrency=10,
-        note="无明确限速，官方建议文明使用；非实时，数据至 2026 年 4 月",
+        key_concurrency=1,
+        note="建议 1-2s 间隔，无明确官方限速，全局锁保护，429 后重试",
     ),
 }
 

@@ -35,8 +35,15 @@ class ArxivRetriever(BaseRetriever):
         if max_results is None:
             max_results = 30
 
+        # 如果 query 包含 arXiv 字段前缀（ti:, all:, abs:, cat:, author:），直接使用
+        # 否则加上 all: 前缀
+        if re.match(r"^(ti:|all:|abs:|cat:|author:)", query.strip()):
+            search_query = query.strip()
+        else:
+            search_query = f"all:{quote(query)}"
+
         params = (
-            f"search_query=all:{quote(query)}"
+            f"search_query={search_query}"
             f"&start=0&max_results={max_results}&sortBy=relevance"
         )
         url = f"{ARXIV_API}?{params}"

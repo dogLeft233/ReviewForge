@@ -1,463 +1,572 @@
 {
   "topic": "ASR自动语音识别",
   "overview": {
-    "definition": "自动语音识别（Automatic Speech Recognition, ASR）是人工智能与信号处理交叉领域，旨在将人类语音信号自动转换为文本或命令。其核心任务是通过算法解析音频中的声学特征，结合语言模型与上下文信息，实现对语音内容的精准转录。ASR技术广泛应用于智能助手、语音搜索、会议记录、客服系统等领域，是人机交互的关键技术之一。",
+    "definition": "好的，基于搜索到的信息，我整理出以下关于自动语音识别（ASR）领域的结构化概况文档。",
     "core_questions": [
-      "噪声环境下的鲁棒性",
-      "实时性与计算效率"
+      "- **语言与发音变异**：词汇的同音字、连续语音中的协同发"
     ],
     "key_concepts": [
-      "噪声环境下的鲁棒性",
-      "方言与口音识别",
-      "语速与语境变化",
-      "多语言支持",
-      "实时性与计算效率",
-      "传统统计模型",
-      "深度学习端到端模型",
-      "注意力机制与自监督学习",
-      "多任务学习与迁移学习",
-      "混合模型架构"
+      "- **声学多样性**：不同说话人的年龄、性别、口音、语速，",
+      "- **环境噪声与鲁棒性**：真实应用场景中普遍存在的背景噪",
+      "- **语言与发音变异**：词汇的同音字、连续语音中的协同发",
+      "- **领域自适应**：特定专业领域（如医疗、法律、金融）中",
+      "- **端到端（End-to-End）模型**：这是当前最主",
+      "- **CTC（Connectionist Temporal",
+      "- **RNN-T（Recurrent Neural Net",
+      "- **Transformer/Conformer**：引入",
+      "- **混合模型（Hybrid Model）**：传统且仍在",
+      "- **基础大模型（Foundation Models）**"
     ],
     "key_concept_explanations": {
-      "噪声环境下的鲁棒性": "实际场景中语音常混杂背景噪声、回声或多人说话，如何提升模型抗干扰能力是核心挑战。",
-      "方言与口音识别": "不同地域的语音特征差异显著，传统模型对非标准发音的适应性不足。",
-      "语速与语境变化": "快速语速、口吃或语境模糊可能导致识别错误，需动态调整模型参数。",
-      "多语言支持": "跨语言语音识别需处理语言间的声学与语言学差异，如音素系统和语法结构。",
-      "实时性与计算效率": "在移动设备或嵌入式系统中，如何平衡模型精度与资源消耗仍是难题。",
-      "传统统计模型": "基于隐马尔可夫模型（HMM）和高斯混合模型（GMM）的声学模型，依赖手工特征（如MFCC）和语言模型（如N-gram）。",
-      "深度学习端到端模型": "采用循环神经网络（RNN）、卷积神经网络（CNN）或Transformer架构，直接映射语音波形到文本（如DeepSpeech、Wav2Vec2）。",
-      "注意力机制与自监督学习": "通过自注意力网络（如Conformer）捕捉长距离依赖，结合自监督预训练（如SSL）提升小样本场景下的性能。",
-      "多任务学习与迁移学习": "联合语音增强、说话人识别等任务优化模型泛化能力，或利用大规模通用语料迁移至特定领域。",
-      "混合模型架构": "结合传统特征提取与深度学习，例如使用CNN提取声学特征后接入RNN或Transformer进行序列建模。"
+      "- **声学多样性**：不同说话人的年龄、性别、口音、语速，": "- **声学多样性**：不同说话人的年龄、性别、口音、语速，以及说话时的情绪状态（如激动、疲倦）都会导致同一句话的声学特征差异巨大。",
+      "- **环境噪声与鲁棒性**：真实应用场景中普遍存在的背景噪": "- **环境噪声与鲁棒性**：真实应用场景中普遍存在的背景噪声（如街道、办公室、多人谈话）、信道失真（如远场、电话）和混响会严重污染语音信号，降低识别准确率。",
+      "- **语言与发音变异**：词汇的同音字、连续语音中的协同发": "- **语言与发音变异**：词汇的同音字、连续语音中的协同发音现象（如连读、吞音）以及词边界模糊问题，增加了语言建模的难度。",
+      "- **领域自适应**：特定专业领域（如医疗、法律、金融）中": "- **领域自适应**：特定专业领域（如医疗、法律、金融）中大量使用的生僻词、缩写和专业术语，与通用领域的语言模型存在巨大差异，导致模型泛化能力下降。",
+      "- **端到端（End-to-End）模型**：这是当前最主": "- **端到端（End-to-End）模型**：这是当前最主流的方法。它直接学习从“语音特征序列”到“文本序列”的映射，无需传统方法中复杂的“声学模型-发音词典-语言模型”独立管道。典型架构包括：",
+      "- **CTC（Connectionist Temporal": "- **CTC（Connectionist Temporal Classification）**：一种无需对齐即可进行序列建模的方法。",
+      "- **RNN-T（Recurrent Neural Net": "- **RNN-T（Recurrent Neural Network Transducer）**：特别适合流式（实时）语音识别，性能优异。",
+      "- **Transformer/Conformer**：引入": "- **Transformer/Conformer**：引入自注意力机制，能更好地捕捉长距离声学依赖。",
+      "- **混合模型（Hybrid Model）**：传统且仍在": "- **混合模型（Hybrid Model）**：传统且仍在广泛使用的工业级方案。通常使用深度神经网络（DNN）作为声学模型，配合隐马尔可夫模型（HMM）进行时序建模，并使用独立的语言模型（N-gram或基于Transformer的语言模型）进行解码和文本纠错。",
+      "- **基础大模型（Foundation Models）**": "- **基础大模型（Foundation Models）**：近年来兴起的趋势，例如OpenAI的Whisper、谷歌的USM等。这些模型在海量多语种、多任务数据上进行预训练，展现出强大的零样本泛化能力和对噪声的鲁棒性，通常采用Encoder-Decoder架构。"
     }
   },
   "timeline": [
     {
+      "year": 1989,
+      "title": "1989",
+      "category": "统计建模奠基",
+      "description": "A Tutorial on Hidden Markov Models and Selected Applications in Speech Recognition",
+      "related_papers": [
+        "p_1989_2011"
+      ]
+    },
+    {
       "year": 2006,
-      "title": "Connectionist Temporal Classification",
-      "category": "1990-2000：统计模型与大规模语料库应用",
-      "description": "提出CTC损失函数，解决语音识别中的序列对齐问题。",
-      "related_papers": [
-        "p_connectionist_temporal_classification"
-      ]
-    },
-    {
-      "year": 2013,
-      "title": "Deep Speech: Scaling up end-to-end speech recognition",
-      "category": "2000-2012：深度学习初步应用",
-      "description": "提出基于DNN的端到端语音识别模型，无需手动特征设计。",
-      "related_papers": [
-        "p_deep_speech_scaling_up_end_to_end_spee"
-      ]
-    },
-    {
-      "year": 2012,
-      "title": "Deep Neural Networks for Acoustic Modeling in Speech Recognition",
-      "category": "2000-2012：深度学习初步应用",
-      "description": "首次将深度卷积神经网络（CNN）应用于声学建模，显著提升准确率。",
-      "related_papers": [
-        "p_deep_neural_networks_for_acoustic_mode"
-      ]
-    },
-    {
-      "year": 2018,
-      "title": "End-to-End Speech Recognition with Transformers",
-      "category": "2012-2018：端到端与Transformer崛起",
-      "description": "《End-to-End Speech Recognition with Transformers》*（2018，Baevski等，ICASSP）",
+      "title": "2006",
+      "category": "端到端革命",
+      "description": "Connectionist Temporal Classification...",
       "related_papers": []
     },
     {
+      "year": 2012,
+      "title": "2012",
+      "category": "深度学习突破",
+      "description": "Context-Dependent Pre-Trained Deep Neural Networks for Large-Vocabulary Speech Recognition",
+      "related_papers": [
+        "p_2012_2014"
+      ]
+    },
+    {
       "year": 2020,
-      "title": "Wav2Vec 2.0: A Self-Supervised Approach to Speech Recognition",
-      "category": "2018至今：自监督学习与多模态融合",
-      "description": "基于自监督学习的预训练模型，利用大量未标注数据提升性能。",
-      "related_papers": [
-        "p_wav2vec_2_0_a_self_supervised_approach"
-      ]
-    },
-    {
-      "year": 2021,
-      "title": "A Survey on End-to-End Speech Recognition",
-      "category": "2018至今：自监督学习与多模态融合",
-      "description": "系统总结端到端模型的发展脉络，涵盖Transformer、CTC、自监督学习等技术。",
-      "related_papers": [
-        "p_a_survey_on_end_to_end_speech_recognit"
-      ]
+      "title": "2020",
+      "category": "Transformer与自监督",
+      "description": "Conformer: Convolution-augmented Transformer for Speech Recognition",
+      "related_papers": []
     }
   ],
-  "methods": [
-    {
-      "id": "m_传统统计模型",
-      "name": "传统统计模型",
-      "category": "主流方法",
-      "description": "基于隐马尔可夫模型（HMM）和高斯混合模型（GMM）的声学模型，依赖手工特征（如MFCC）和语言模型（如N-gram）",
-      "pros": [
-        "模型简单，计算高效",
-        "适合小规模数据集"
-      ],
-      "cons": [
-        "对非标准发音适应性差",
-        "依赖手工特征设计"
-      ],
-      "papers": [
-        "p_deep_neural_networks_for_acoustic_mode"
-      ]
-    },
-    {
-      "id": "m_深度学习端到端模型",
-      "name": "深度学习端到端模型",
-      "category": "主流方法",
-      "description": "采用循环神经网络（RNN）、卷积神经网络（CNN）或Transformer架构，直接映射语音波形到文本（如DeepSpeech、Wav2Vec2）",
-      "pros": [
-        "无需手工特征设计",
-        "适合大规模数据训练"
-      ],
-      "cons": [
-        "对计算资源需求高",
-        "小样本场景表现有限"
-      ],
-      "papers": [
-        "p_connectionist_temporal_classification",
-        "p_deep_neural_networks_for_acoustic_mode",
-        "p_deep_speech_scaling_up_end_to_end_spee",
-        "p_a_survey_on_end_to_end_speech_recognit"
-      ]
-    },
-    {
-      "id": "m_注意力机制与自监督学习",
-      "name": "注意力机制与自监督学习",
-      "category": "主流方法",
-      "description": "通过自注意力网络（如Conformer）捕捉长距离依赖，结合自监督预训练（如SSL）提升小样本场景下的性能",
-      "pros": [
-        "捕捉长距离依赖",
-        "减少标注数据需求"
-      ],
-      "cons": [
-        "训练复杂度较高",
-        "对硬件资源要求高"
-      ],
-      "papers": [
-        "p_wav2vec_2_0_a_self_supervised_approach",
-        "p_a_survey_on_end_to_end_speech_recognit"
-      ]
-    }
-  ],
+  "methods": [],
   "papers": [
     {
-      "id": "p_connectionist_temporal_classification",
-      "title": "Connectionist Temporal Classification",
-      "year": 2006,
-      "authors": "Alex Graves等",
-      "venue": "ICML",
-      "summary": "提出CTC损失函数，解决语音识别中的序列对齐问题。",
-      "url": "https://arxiv.org/abs/2309.11983"
+      "id": "p_1989_2011",
+      "title": "1989–2011",
+      "year": 0,
+      "authors": "统计GMM-HMM",
+      "venue": "",
+      "summary": "Rabiner 1989",
+      "url": ""
     },
     {
-      "id": "p_deep_neural_networks_for_acoustic_mode",
-      "title": "Deep Neural Networks for Acoustic Modeling in Speech Recognition",
-      "year": 2012,
-      "authors": "Hinton等",
-      "venue": "arXiv",
-      "summary": "首次将深度卷积神经网络（CNN）应用于声学建模，显著提升准确率。",
-      "url": "https://arxiv.org/abs/1504.01482"
+      "id": "p_2012_2014",
+      "title": "2012–2014",
+      "year": 0,
+      "authors": "深度学习混合",
+      "venue": "",
+      "summary": "Dahl 2012",
+      "url": ""
     },
     {
-      "id": "p_deep_speech_scaling_up_end_to_end_spee",
-      "title": "Deep Speech: Scaling up end-to-end speech recognition",
-      "year": 2013,
-      "authors": "George E. Dahl等",
-      "venue": "Google I/O",
-      "summary": "提出基于DNN的端到端语音识别模型，无需手动特征设计。",
-      "url": "https://arxiv.org/abs/1412.5567"
+      "id": "p_2014_2018",
+      "title": "2014–2018",
+      "year": 0,
+      "authors": "端到端CTC/Seq2Seq/RNN-T",
+      "venue": "",
+      "summary": "Graves 2006; Deep Speech 2; LAS; RNN-T",
+      "url": ""
     },
     {
-      "id": "p_attention_is_all_you_need",
-      "title": "Attention Is All You Need",
-      "year": 2017,
-      "authors": "Ashish Vaswani等",
-      "venue": "NeurIPS",
-      "summary": "提出Transformer架构，通过自注意力机制替代RNN/CNN。",
-      "url": "https://arxiv.org/abs/1706.03762"
+      "id": "p_2019_至今",
+      "title": "2019–至今",
+      "year": 0,
+      "authors": "自监督+Transformer/Conformer",
+      "venue": "",
+      "summary": "wav2vec 2.0; Conformer; HuBERT; Whisper",
+      "url": ""
     },
     {
-      "id": "p_wav2vec_2_0_a_self_supervised_approach",
-      "title": "Wav2Vec 2.0: A Self-Supervised Approach to Speech Recognition",
-      "year": 2020,
-      "authors": "Alexei Baevski等",
-      "venue": "NeurIPS",
-      "summary": "基于自监督学习的预训练模型，利用大量未标注数据提升性能。",
-      "url": "https://arxiv.org/abs/2405.01234"
+      "id": "p_whisperrt_turning_whisper_into_a_causa",
+      "title": "WhisperRT -- Turning Whisper into a Causal Streaming Model - arXiv",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "Automatic Speech Recognition (ASR) has seen remarkable progress, with models like OpenAI Whisper and NVIDIA Canary achieving state-of-the-art ( ...",
+      "url": ""
     },
     {
-      "id": "p_a_survey_on_end_to_end_speech_recognit",
-      "title": "A Survey on End-to-End Speech Recognition",
-      "year": 2021,
-      "authors": "王伟等",
-      "venue": "arXiv",
-      "summary": "系统总结端到端模型的发展脉络，涵盖Transformer、CTC、自监督学习等技术。",
-      "url": "https://arxiv.org/abs/2303.03329"
+      "id": "p_an_explainable_end_to_end_automatic_sp",
+      "title": "An Explainable End-to-End Automatic Speech Recognition Model ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "End-to-end transformer-based automatic speech recognition (ASR) systems often capture multiple speech traits in their learned representations ...",
+      "url": ""
+    },
+    {
+      "id": "p_adapting_whisper_for_streaming_speech_",
+      "title": "Adapting Whisper for Streaming Speech Recognition via Two-Pass ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "Abstract:OpenAI Whisper is a family of robust Automatic Speech Recognition (ASR) models trained on 680,000 hours of audio.",
+      "url": ""
+    },
+    {
+      "id": "p_noise_robust_av_asr_using_visual_featu",
+      "title": "Noise-Robust AV-ASR Using Visual Features Both in the Whisper ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "Abstract:In audiovisual automatic speech recognition (AV-ASR) systems, information fusion of visual features in a pre-trained ASR has been ...",
+      "url": ""
+    },
+    {
+      "id": "p_pre_training_transformer_decoder_for_e",
+      "title": "Pre-Training Transformer Decoder for End-to-End ASR Model with ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "This paper studies a novel pre-training technique with unpaired speech data, Speech2C, for encoder-decoder based automatic speech recognition (ASR).",
+      "url": ""
+    },
+    {
+      "id": "p_2406_01446_enabling_asr_for_low_resour",
+      "title": "[2406.01446] Enabling ASR for Low-Resource Languages - arXiv",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "In recent years, automatic speech recognition (ASR) systems have significantly improved, especially in languages with a vast amount of transcribed speech data. However, ASR systems tend to perform poorly for low-resource languages with fewer resources, such as minority and regional languages. This study introduces a novel pipeline designed to generate ASR training datasets from audiobooks, which typically feature a single transcript associated with hours-long audios. The common structure of these audiobooks poses a unique challenge due to the extensive length of audio segments, whereas optimal ASR training requires segments ranging from 4 to 15 seconds. To address this, we propose a method for effectively aligning audio with its corresponding text and segmenting it into lengths suitable for ASR training. Our approach simplifies data preparation for ASR systems in low-resource languages and demonstrates its application through a case study involving the Armenian language. Our method, wh",
+      "url": ""
+    },
+    {
+      "id": "p_2510_12827_automatic_speech_recognitio",
+      "title": "[2510.12827] Automatic Speech Recognition in the Modern Era - arXiv",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "This survey provides a comprehensive overview of the modern era of ASR, charting its evolution from traditional hybrid systems, such as ...",
+      "url": ""
+    },
+    {
+      "id": "p_recent_advances_in_end_to_end_automati",
+      "title": "Recent advances in end-to-end automatic speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2410.16726] Enhancing Low-Res]",
+      "summary": "Recent advances in end-to-end automatic speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_semi_supervised_asr_by_end_to_end_self",
+      "title": "Semi-supervised ASR by end-to-end self-training",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2410.16726] Enhancing Low-Res]",
+      "summary": "Semi-supervised ASR by end-to-end self-training",
+      "url": ""
+    },
+    {
+      "id": "p_specaugment_a_simple_data_augmentation",
+      "title": "Specaugment: A simple data augmentation method for automatic speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2510.12827] Automatic Speech ]",
+      "summary": "Specaugment: A simple data augmentation method for automatic speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_automatic_speech_recognition_using_adv",
+      "title": "Automatic Speech Recognition using Advanced Deep Learning ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "This survey offers a comprehensive review of DTL, FL, and RL-based ASR frameworks, aiming to provide insights into the latest developments.",
+      "url": ""
+    },
+    {
+      "id": "p_corpus_synthesis_for_zero_shot_asr_dom",
+      "title": "Corpus Synthesis for Zero-shot ASR domain Adaptation using Large ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "In this paper, we propose a new strategy for adapting ASR models to new target domains without any text or speech from those domains.",
+      "url": ""
+    },
+    {
+      "id": "p_making_more_of_little_data_improving_l",
+      "title": "Making more of little data: Improving low-resource automatic speech recognition using data augmentation",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2410.16726] Enhancing Low-Res]",
+      "summary": "Making more of little data: Improving low-resource automatic speech recognition using data augmentation",
+      "url": ""
+    },
+    {
+      "id": "p_end_to_end_speaker_attributed_asr_with",
+      "title": "End-to-End Speaker-Attributed ASR with Transformer - arXiv",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "This paper presents our recent effort on end-to-end speaker-attributed automatic speech recognition, which jointly performs speaker counting, speech ...",
+      "url": ""
+    },
+    {
+      "id": "p_2410_16726_enhancing_low_resource_asr_",
+      "title": "[2410.16726] Enhancing Low-Resource ASR through Versatile TTS",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "The proposed method of enhancing low-resource ASR through a versatile TTS model is highly effective and has broad application prospects.",
+      "url": ""
+    },
+    {
+      "id": "p_2303_03329_end_to_end_speech_recogniti",
+      "title": "[2303.03329] End-to-End Speech Recognition: A Survey - arXiv",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "The goal of this survey is to provide a taxonomy of E2E ASR models and corresponding improvements, and to discuss their properties.",
+      "url": ""
+    },
+    {
+      "id": "p_listen_attend_and_spell_a_neural_netwo",
+      "title": "Listen, attend and spell: A neural network for large vocabulary conversational speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2510.12827] Automatic Speech ]",
+      "summary": "Listen, attend and spell: A neural network for large vocabulary conversational speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_multimodal_in_context_learning_for_asr",
+      "title": "Multimodal In-context Learning for ASR of Low-resource Languages",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "Results show that MICL consistently improves ASR performance, and that cross-lingual transfer learning matches or outperforms corpus-trained ...",
+      "url": ""
+    },
+    {
+      "id": "p_exploring_neural_transducers_for_end_t",
+      "title": "Exploring neural transducers for end-to-end speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2510.12827] Automatic Speech ]",
+      "summary": "Exploring neural transducers for end-to-end speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_large_language_models_are_efficient_le",
+      "title": "Large Language Models are Efficient Learners of Noise-Robust ...",
+      "year": 0,
+      "authors": "",
+      "venue": "Search: ASR自动语音识别",
+      "summary": "The latest work proposes a GER benchmark with HyPoradise dataset to learn the mapping from ASR N-best hypotheses to ground-truth transcription by efficient LLM ...",
+      "url": ""
+    },
+    {
+      "id": "p_a_purely_end_to_end_system_for_multi_s",
+      "title": "A purely\nend-to-end system for multi-speaker speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[End-to-End Speaker-Attributed ]",
+      "summary": "A purely\nend-to-end system for multi-speaker speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_wav2vec_2_0_a_framework_for_self_super",
+      "title": "wav2vec 2.0: A framework for\nself-supervised learning of speech representations",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[Pre-Training Transformer Decod]",
+      "summary": "wav2vec 2.0: A framework for\nself-supervised learning of speech representations",
+      "url": ""
+    },
+    {
+      "id": "p_english_conversational_telephone_speec",
+      "title": "English conversational telephone speech recognition by humans and machines",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2510.12827] Automatic Speech ]",
+      "summary": "English conversational telephone speech recognition by humans and machines",
+      "url": ""
+    },
+    {
+      "id": "p_all_neural_online_source_separation_co",
+      "title": "All-neural online source separation, counting, and\ndiarization for meeting analysis",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[End-to-End Speaker-Attributed ]",
+      "summary": "All-neural online source separation, counting, and\ndiarization for meeting analysis",
+      "url": ""
+    },
+    {
+      "id": "p_attention_based_models_for_speech_reco",
+      "title": "Attention-Based Models for Speech Recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[Multimodal In-context Learning]",
+      "summary": "Attention-Based Models for Speech Recognition",
+      "url": ""
+    },
+    {
+      "id": "p_robust_speech_recognition_via_large_sc",
+      "title": "Robust speech recognition via large-scale weak supervision",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2510.12827] Automatic Speech ]",
+      "summary": "Robust speech recognition via large-scale weak supervision",
+      "url": ""
+    },
+    {
+      "id": "p_self_training_for_end_to_end_speech_re",
+      "title": "Self-training for end-to-end speech recognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[[2410.16726] Enhancing Low-Res]",
+      "summary": "Self-training for end-to-end speech recognition",
+      "url": ""
+    },
+    {
+      "id": "p_wavlm_large_scale_self_supervised_pre_",
+      "title": "Wavlm: Large-scale self-supervised\npre-training for full stack speech processing",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[Pre-Training Transformer Decod]",
+      "summary": "Wavlm: Large-scale self-supervised\npre-training for full stack speech processing",
+      "url": ""
+    },
+    {
+      "id": "p_integration_of_speech_separation_diari",
+      "title": "Integration of speech separation,\ndiarization, and recognition for multi-speaker meetings: System description,\ncomparison, and analysis",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[End-to-End Speaker-Attributed ]",
+      "summary": "Integration of speech separation,\ndiarization, and recognition for multi-speaker meetings: System description,\ncomparison, and analysis",
+      "url": ""
+    },
+    {
+      "id": "p_streaming_end_to_end_multi_talker_spee",
+      "title": "Streaming end-to-end multi-talker speech\nrecognition",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[End-to-End Speaker-Attributed ]",
+      "summary": "Streaming end-to-end multi-talker speech\nrecognition",
+      "url": ""
+    },
+    {
+      "id": "p_speecht5_unified_modal_encoder_decoder",
+      "title": "SpeechT5: Unified-modal encoder-decoder pre-training for\nspoken language processing",
+      "year": 0,
+      "authors": "",
+      "venue": "ar5iv.Ref[Pre-Training Transformer Decod]",
+      "summary": "SpeechT5: Unified-modal encoder-decoder pre-training for\nspoken language processing",
+      "url": ""
     }
   ],
   "benchmarks": [
     {
       "model": "Papers With Code - ASR SOTA",
-      "dataset": "LibriSpeech (Clean & Noisy), Common Voice (Multilingual), TIMIT, WSJ0-2 (Wall Street Journal)",
-      "metric": "字符错误率 (Char Error Rate, CER) / 字词错误率 (Word Error Rate, WER)",
-      "score": 0.0,
-      "year": 0,
-      "url": "https://paperswithcode.com/sota/automatic-speech-recognition",
-      "description": "汇总多种公开数据集和模型性能，提供ASR领域的全面对比基准。"
-    },
-    {
-      "model": "Hugging Face ASR Leaderboard",
-      "dataset": "LibriSpeech, TED Talks, MultiTask",
-      "metric": "WER, CER, 推理速度 (FPS)",
-      "score": 0.0,
-      "year": 0,
-      "url": "https://huggingface.co/spaces/whisper-community/leaderboard",
-      "description": "专注于多任务评估，涵盖推理速度和多语言性能的实时对比。"
-    },
-    {
-      "model": "Kaggle Speech Recognition Competitions",
-      "dataset": "Speech Commands, AudioSet, LibriVox",
-      "metric": "WER, CER, 计算资源消耗",
-      "score": 0.0,
-      "year": 0,
-      "url": "https://www.kaggle.com/competitions/speech-recognition",
-      "description": "通过竞赛形式评估模型在多样化语音任务中的表现，强调资源效率。"
-    },
-    {
-      "model": "LibriSpeech",
       "dataset": "",
       "metric": "",
       "score": 0.0,
       "year": 0,
-      "url": "https://www.librispeech.org/datasets.html",
-      "description": "包含1000小时高质量英语语音数据，适用于标准化ASR模型评估。"
+      "url": "https://paperswithcode.com/task/speech-recognition",
+      "description": "常用评测入口，汇总该方向的公开数据集、指标和模型对比结果"
     },
     {
-      "model": "Common Voice (Multilingual)",
+      "model": "Common Voice",
       "dataset": "",
       "metric": "",
       "score": 0.0,
       "year": 0,
       "url": "https://commonvoice.mozilla.org/",
-      "description": "覆盖70多种语言的众包语音数据集，支持多语言ASR研究。"
+      "description": "数千小时"
     },
     {
-      "model": "TIMIT",
+      "model": "AIShell-1",
       "dataset": "",
       "metric": "",
       "score": 0.0,
       "year": 0,
-      "url": "https://catalog.ldc.upenn.edu/LDC93S1",
-      "description": "包含发音变异和口音数据的美语语音库，适合声学建模研究。"
+      "url": "https://paperswithcode.com/dataset/aishell-1",
+      "description": "178h"
+    },
+    {
+      "model": "Switchboard",
+      "dataset": "",
+      "metric": "",
+      "score": 0.0,
+      "year": 0,
+      "url": "https://paperswithcode.com/dataset/switchboard",
+      "description": "~300h"
+    },
+    {
+      "model": "Open ASR Leaderboard",
+      "dataset": "",
+      "metric": "",
+      "score": 0.0,
+      "year": 0,
+      "url": "https://huggingface.co/spaces/hf-audio/open_asr_leaderboard",
+      "description": "多种"
     }
   ],
   "frontiers": [
     {
-      "name": "多语言语音识别",
-      "description": "支持1600种语言，扩展低资源语言覆盖。",
-      "importance": "支持零样本泛化和社区协作。",
+      "name": "whisper",
+      "description": "| **Open AI Whisper 官方** | https://github.com/openai/whisper |",
+      "importance": "open-source project",
       "related_methods": [],
-      "related_papers": []
-    },
-    {
-      "name": "长文本语音识别",
-      "description": "跨注意力对齐增强长文本识别鲁棒性。",
-      "importance": "解决长文本场景中的识别挑战。",
-      "related_methods": [],
-      "related_papers": []
-    },
-    {
-      "name": "动态环境中的ASR",
-      "description": "自适应技术提升动态环境下识别性能。",
-      "importance": "应对嘈杂和变化环境中的语音识别挑战。",
-      "related_methods": [],
-      "related_papers": []
+      "related_papers": [
+        "p_2019_至今",
+        "p_whisperrt_turning_whisper_into_a_causa",
+        "p_adapting_whisper_for_streaming_speech_",
+        "p_noise_robust_av_asr_using_visual_featu"
+      ]
     }
   ],
   "resources": [
     {
-      "id": "r_https_paperswithcode_com_sota_automati",
-      "name": "https://paperswithcode.com/sota/automatic-speech-recognition",
+      "id": "r_https_en_wikipedia_org_wiki_speech_rec",
+      "name": "Speech_recognition\"",
+      "type": "resource",
+      "url": "https://en.wikipedia.org/wiki/Speech_recognition\"",
+      "description": "<web_fetch url=\"https://en.wikipedia.org/wiki/Speech_recognition\" max_chars=5000 />",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_arxiv_org_abs_2001_04320",
+      "name": "2001.04320\"",
+      "type": "paper",
+      "url": "https://arxiv.org/abs/2001.04320\"",
+      "description": "<web_fetch url=\"https://arxiv.org/abs/2001.04320\" max_chars=5000 />",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_arxiv_org_abs_2103_08847",
+      "name": "2103.08847\"",
+      "type": "paper",
+      "url": "https://arxiv.org/abs/2103.08847\"",
+      "description": "<web_fetch url=\"https://arxiv.org/abs/2103.08847\" max_chars=5000 />",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_paperswithcode_com_task_speech_r",
+      "name": "https://paperswithcode.com/task/speech-recognition",
       "type": "leaderboard",
-      "url": "https://paperswithcode.com/sota/automatic-speech-recognition",
-      "description": "- **URL**: [https://paperswithcode.com/sota/automatic-speech-recognition](https://paperswithcode.com/sota/automatic-speech-recognition)",
+      "url": "https://paperswithcode.com/task/speech-recognition",
+      "description": "| **Papers With Code – Speech Recognition on LibriSpeech** | LibriSpeech test-clean / test-other | Word Error Rate (WER) | [https://paperswithcode.com/task/speech-recognition](https://paperswithcode.com/task/speech-recognition) | WER 1.1% (",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_huggingface_co_spaces_whisper_co",
-      "name": "https://huggingface.co/spaces/whisper-community/leaderboard",
+      "id": "r_https_github_com_openai_whisper",
+      "name": "whisper",
+      "type": "github_repo",
+      "url": "https://github.com/openai/whisper",
+      "description": "| **Open AI Whisper 官方** | https://github.com/openai/whisper |",
+      "related_methods": [],
+      "related_papers": []
+    },
+    {
+      "id": "r_https_huggingface_co_spaces_hf_audio_o",
+      "name": "open_asr_leaderboard",
       "type": "model_or_space",
-      "url": "https://huggingface.co/spaces/whisper-community/leaderboard",
-      "description": "- **URL**: [https://huggingface.co/spaces/whisper-community/leaderboard](https://huggingface.co/spaces/whisper-community/leaderboard)",
+      "url": "https://huggingface.co/spaces/hf-audio/open_asr_leaderboard",
+      "description": "| **Hugging Face Open ASR Leaderboard** | https://huggingface.co/spaces/hf-audio/open_asr_leaderboard |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_www_kaggle_com_competitions_spee",
-      "name": "https://www.kaggle.com/competitions/speech-recognition",
-      "type": "dataset",
-      "url": "https://www.kaggle.com/competitions/speech-recognition",
-      "description": "- **URL**: [https://www.kaggle.com/competitions/speech-recognition](https://www.kaggle.com/competitions/speech-recognition)",
-      "related_methods": [],
-      "related_papers": []
-    },
-    {
-      "id": "r_https_arxiv_org_abs_2403_01251",
-      "name": "Efficient Conformer: A Lightweight Transformer for Speech Recognition",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/2403.01251",
-      "description": "- **论文**: [Efficient Conformer: A Lightweight Transformer for Speech Recognition](https://arxiv.org/abs/2403.01251)",
-      "related_methods": [],
-      "related_papers": []
-    },
-    {
-      "id": "r_https_arxiv_org_abs_2405_01234",
-      "name": "Wav2Vec2: A Self-Supervised Approach to Speech Recognition",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/2405.01234",
-      "description": "- **论文**: [Wav2Vec2: A Self-Supervised Approach to Speech Recognition](https://arxiv.org/abs/2405.01234)",
-      "related_methods": [],
-      "related_papers": [
-        "p_wav2vec_2_0_a_self_supervised_approach"
-      ]
-    },
-    {
-      "id": "r_https_www_librispeech_org_datasets_htm",
-      "name": "https://www.librispeech.org/datasets.html",
-      "type": "dataset",
-      "url": "https://www.librispeech.org/datasets.html",
-      "description": "- **URL**: [https://www.librispeech.org/datasets.html](https://www.librispeech.org/datasets.html)",
+      "id": "r_https_www_openslr_org_12",
+      "name": "12",
+      "type": "resource",
+      "url": "https://www.openslr.org/12",
+      "description": "| **LibriSpeech 数据集官网** | https://www.openslr.org/12 |",
       "related_methods": [],
       "related_papers": []
     },
     {
       "id": "r_https_commonvoice_mozilla_org",
-      "name": "https://commonvoice.mozilla.org/",
+      "name": "commonvoice.mozilla.org",
       "type": "dataset",
       "url": "https://commonvoice.mozilla.org/",
-      "description": "- **URL**: [https://commonvoice.mozilla.org/](https://commonvoice.mozilla.org/)",
+      "description": "| **Common Voice 排行榜** | https://commonvoice.mozilla.org/ |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_catalog_ldc_upenn_edu_ldc93s1",
-      "name": "https://catalog.ldc.upenn.edu/LDC93S1",
+      "id": "r_http_www_aishelltech_com",
+      "name": "www.aishelltech.com",
       "type": "resource",
-      "url": "https://catalog.ldc.upenn.edu/LDC93S1",
-      "description": "- **URL**: [https://catalog.ldc.upenn.edu/LDC93S1](https://catalog.ldc.upenn.edu/LDC93S1)",
+      "url": "http://www.aishelltech.com/",
+      "description": "| **AISHELL-1 基准** | http://www.aishelltech.com/ |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_arxiv_org_abs_2309_11983",
-      "name": "Connectionist Temporal Classification",
+      "id": "r_https_arxiv_org_abs_2212_04356",
+      "name": "2212.04356",
       "type": "paper",
-      "url": "https://arxiv.org/abs/2309.11983",
-      "description": "CTC损失函数的提出解决了语音识别中的序列对齐问题。",
-      "related_methods": [],
-      "related_papers": [
-        "p_connectionist_temporal_classification"
-      ]
-    },
-    {
-      "id": "r_https_arxiv_org_abs_1504_01482",
-      "name": "Deep Neural Networks for Acoustic Modeling in Speech Recognition",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/1504.01482",
-      "description": "首次将深度卷积神经网络应用于声学建模。",
-      "related_methods": [],
-      "related_papers": [
-        "p_deep_neural_networks_for_acoustic_mode"
-      ]
-    },
-    {
-      "id": "r_https_arxiv_org_abs_1412_5567",
-      "name": "Deep Speech: Scaling up end-to-end speech recognition",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/1412.5567",
-      "description": "提出了基于DNN的端到端语音识别模型。",
-      "related_methods": [],
-      "related_papers": [
-        "p_deep_speech_scaling_up_end_to_end_spee"
-      ]
-    },
-    {
-      "id": "r_https_arxiv_org_abs_1706_03762",
-      "name": "Attention Is All You Need",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/1706.03762",
-      "description": "Transformer架构的提出通过自注意力机制替代了RNN/CNN。",
-      "related_methods": [],
-      "related_papers": [
-        "p_attention_is_all_you_need"
-      ]
-    },
-    {
-      "id": "r_https_arxiv_org_abs_2303_03329",
-      "name": "A Survey on End-to-End Speech Recognition",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/2303.03329",
-      "description": "系统总结了端到端语音识别模型的发展脉络。",
-      "related_methods": [],
-      "related_papers": [
-        "p_a_survey_on_end_to_end_speech_recognit"
-      ]
-    },
-    {
-      "id": "r_https_arxiv_org_abs_2511_09690",
-      "name": "Omnilingual ASR",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/2511.09690",
-      "description": "支持1600多种语言的开源多语言语音识别系统，利用自监督预训练和大规模语言模型解码器实现零样本泛化。",
+      "url": "https://arxiv.org/abs/2212.04356",
+      "description": "| **最新SOTA论文（Whisper）** | https://arxiv.org/abs/2212.04356 |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_github_com_afmsaif_m2asr",
-      "name": "M2ASR GitHub Repository",
-      "type": "github_repo",
-      "url": "https://github.com/afmsaif/M2ASR",
-      "description": "M2ASR框架的开源实现，支持多语言多任务语音识别。",
+      "id": "r_https_arxiv_org_abs_2005_08100",
+      "name": "2005.08100",
+      "type": "paper",
+      "url": "https://arxiv.org/abs/2005.08100",
+      "description": "| **Conformer 论文** | https://arxiv.org/abs/2005.08100 |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_arxiv_org_abs_2510_06961",
-      "name": "Open ASR Leaderboard",
-      "type": "paper",
-      "url": "https://arxiv.org/abs/2510.06961",
-      "description": "一个透明的多语言和长文本语音识别基准测试平台。",
+      "id": "r_https_paperswithcode_com_dataset_aishe",
+      "name": "Papers with Code",
+      "type": "leaderboard",
+      "url": "https://paperswithcode.com/dataset/aishell-1",
+      "description": "| **AIShell-1** | 中文普通话 | 178h | 室内、朗读语音 | ~4.2% (CER) | 最常用的中文开源 ASR 基准之一。 [Papers with Code](https://paperswithcode.com/dataset/aishell-1) |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_www_isca_archive_org_interspeech_2025",
-      "name": "Long-Form ASR Robustness",
-      "type": "paper",
-      "url": "https://www.isca-archive.org/interspeech_2025/",
-      "description": "提出基于位置对齐的跨注意力改进方法，用于长文本语音识别。",
+      "id": "r_https_paperswithcode_com_dataset_switc",
+      "name": "Papers with Code",
+      "type": "leaderboard",
+      "url": "https://paperswithcode.com/dataset/switchboard",
+      "description": "| **Switchboard** | 英语电话对话 | ~300h | 电话场景、口语对话复杂 | ~5.0% | 衡量模型在对话和电话信道上的性能。 [Papers with Code](https://paperswithcode.com/dataset/switchboard) |",
       "related_methods": [],
       "related_papers": []
     },
     {
-      "id": "r_https_arxiv_org_pdf_2510_12827",
-      "name": "Modern ASR Architectures",
+      "id": "r_https_arxiv_org_abs_2202_01277",
+      "name": "论文",
       "type": "paper",
-      "url": "https://arxiv.org/pdf/2510.12827",
-      "description": "综述现代ASR技术，包括流式ASR和多模态融合的最新进展。",
-      "related_methods": [],
-      "related_papers": []
-    },
-    {
-      "id": "r_https_www_sciencedirect_com_science_article_pii_s15662535240",
-      "name": "Advanced ASR Systems",
-      "type": "paper",
-      "url": "https://www.sciencedirect.com/science/article/pii/S1566253524002008",
-      "description": "探讨深度学习在动态环境中的ASR应用。",
+      "url": "https://arxiv.org/abs/2202.01277",
+      "description": "- **Google USM (2023)**：一种通用语音模型，旨在统一多语言、多任务语音理解，展示了大规模预训练在语音领域的巨大潜力。 [论文](https://arxiv.org/abs/2202.01277)",
       "related_methods": [],
       "related_papers": []
     }
@@ -470,394 +579,364 @@
         "type": "topic"
       },
       {
-        "id": "c_主流方法",
-        "label": "主流方法",
-        "type": "concept"
-      },
-      {
-        "id": "m_传统统计模型",
-        "label": "传统统计模型",
-        "type": "method"
-      },
-      {
-        "id": "m_深度学习端到端模型",
-        "label": "深度学习端到端模型",
-        "type": "method"
-      },
-      {
-        "id": "m_注意力机制与自监督学习",
-        "label": "注意力机制与自监督学习",
-        "type": "method"
-      },
-      {
-        "id": "p_connectionist_temporal_classification",
-        "label": "Connectionist Temporal Classification",
+        "id": "p_1989_2011",
+        "label": "1989–2011",
         "type": "paper"
       },
       {
-        "id": "p_deep_neural_networks_for_acoustic_mode",
-        "label": "Deep Neural Networks for Acoustic Modeling in",
+        "id": "p_2012_2014",
+        "label": "2012–2014",
         "type": "paper"
       },
       {
-        "id": "p_deep_speech_scaling_up_end_to_end_spee",
-        "label": "Deep Speech: Scaling up end-to-end speech rec",
+        "id": "p_2014_2018",
+        "label": "2014–2018",
         "type": "paper"
       },
       {
-        "id": "p_attention_is_all_you_need",
-        "label": "Attention Is All You Need",
+        "id": "p_2019_至今",
+        "label": "2019–至今",
         "type": "paper"
       },
       {
-        "id": "p_wav2vec_2_0_a_self_supervised_approach",
-        "label": "Wav2Vec 2.0: A Self-Supervised Approach to Sp",
+        "id": "p_whisperrt_turning_whisper_into_a_causa",
+        "label": "WhisperRT -- Turning Whisper into a Causal St",
         "type": "paper"
       },
       {
-        "id": "p_a_survey_on_end_to_end_speech_recognit",
-        "label": "A Survey on End-to-End Speech Recognition",
+        "id": "p_an_explainable_end_to_end_automatic_sp",
+        "label": "An Explainable End-to-End Automatic Speech Re",
         "type": "paper"
       },
       {
-        "id": "bm_papers_with_code_asr_sota_librispeech_",
+        "id": "p_adapting_whisper_for_streaming_speech_",
+        "label": "Adapting Whisper for Streaming Speech Recogni",
+        "type": "paper"
+      },
+      {
+        "id": "p_noise_robust_av_asr_using_visual_featu",
+        "label": "Noise-Robust AV-ASR Using Visual Features Bot",
+        "type": "paper"
+      },
+      {
+        "id": "p_pre_training_transformer_decoder_for_e",
+        "label": "Pre-Training Transformer Decoder for End-to-E",
+        "type": "paper"
+      },
+      {
+        "id": "p_2406_01446_enabling_asr_for_low_resour",
+        "label": "[2406.01446] Enabling ASR for Low-Resource La",
+        "type": "paper"
+      },
+      {
+        "id": "p_2510_12827_automatic_speech_recognitio",
+        "label": "[2510.12827] Automatic Speech Recognition in ",
+        "type": "paper"
+      },
+      {
+        "id": "p_recent_advances_in_end_to_end_automati",
+        "label": "Recent advances in end-to-end automatic speec",
+        "type": "paper"
+      },
+      {
+        "id": "p_semi_supervised_asr_by_end_to_end_self",
+        "label": "Semi-supervised ASR by end-to-end self-traini",
+        "type": "paper"
+      },
+      {
+        "id": "p_specaugment_a_simple_data_augmentation",
+        "label": "Specaugment: A simple data augmentation metho",
+        "type": "paper"
+      },
+      {
+        "id": "p_automatic_speech_recognition_using_adv",
+        "label": "Automatic Speech Recognition using Advanced D",
+        "type": "paper"
+      },
+      {
+        "id": "p_corpus_synthesis_for_zero_shot_asr_dom",
+        "label": "Corpus Synthesis for Zero-shot ASR domain Ada",
+        "type": "paper"
+      },
+      {
+        "id": "p_making_more_of_little_data_improving_l",
+        "label": "Making more of little data: Improving low-res",
+        "type": "paper"
+      },
+      {
+        "id": "p_end_to_end_speaker_attributed_asr_with",
+        "label": "End-to-End Speaker-Attributed ASR with Transf",
+        "type": "paper"
+      },
+      {
+        "id": "p_2410_16726_enhancing_low_resource_asr_",
+        "label": "[2410.16726] Enhancing Low-Resource ASR throu",
+        "type": "paper"
+      },
+      {
+        "id": "p_2303_03329_end_to_end_speech_recogniti",
+        "label": "[2303.03329] End-to-End Speech Recognition: A",
+        "type": "paper"
+      },
+      {
+        "id": "p_listen_attend_and_spell_a_neural_netwo",
+        "label": "Listen, attend and spell: A neural network fo",
+        "type": "paper"
+      },
+      {
+        "id": "p_multimodal_in_context_learning_for_asr",
+        "label": "Multimodal In-context Learning for ASR of Low",
+        "type": "paper"
+      },
+      {
+        "id": "p_exploring_neural_transducers_for_end_t",
+        "label": "Exploring neural transducers for end-to-end s",
+        "type": "paper"
+      },
+      {
+        "id": "p_large_language_models_are_efficient_le",
+        "label": "Large Language Models are Efficient Learners ",
+        "type": "paper"
+      },
+      {
+        "id": "p_a_purely_end_to_end_system_for_multi_s",
+        "label": "A purely\nend-to-end system for multi-speaker ",
+        "type": "paper"
+      },
+      {
+        "id": "p_wav2vec_2_0_a_framework_for_self_super",
+        "label": "wav2vec 2.0: A framework for\nself-supervised ",
+        "type": "paper"
+      },
+      {
+        "id": "p_english_conversational_telephone_speec",
+        "label": "English conversational telephone speech recog",
+        "type": "paper"
+      },
+      {
+        "id": "p_all_neural_online_source_separation_co",
+        "label": "All-neural online source separation, counting",
+        "type": "paper"
+      },
+      {
+        "id": "p_attention_based_models_for_speech_reco",
+        "label": "Attention-Based Models for Speech Recognition",
+        "type": "paper"
+      },
+      {
+        "id": "p_robust_speech_recognition_via_large_sc",
+        "label": "Robust speech recognition via large-scale wea",
+        "type": "paper"
+      },
+      {
+        "id": "p_self_training_for_end_to_end_speech_re",
+        "label": "Self-training for end-to-end speech recogniti",
+        "type": "paper"
+      },
+      {
+        "id": "p_wavlm_large_scale_self_supervised_pre_",
+        "label": "Wavlm: Large-scale self-supervised\npre-traini",
+        "type": "paper"
+      },
+      {
+        "id": "p_integration_of_speech_separation_diari",
+        "label": "Integration of speech separation,\ndiarization",
+        "type": "paper"
+      },
+      {
+        "id": "p_streaming_end_to_end_multi_talker_spee",
+        "label": "Streaming end-to-end multi-talker speech\nreco",
+        "type": "paper"
+      },
+      {
+        "id": "p_speecht5_unified_modal_encoder_decoder",
+        "label": "SpeechT5: Unified-modal encoder-decoder pre-t",
+        "type": "paper"
+      },
+      {
+        "id": "bm_papers_with_code_asr_sota__0",
         "label": "Papers With Code - ASR SOTA",
         "type": "benchmark"
       },
       {
-        "id": "d_librispeech_clean_noisy_common_voice_m",
-        "label": "LibriSpeech (Clean & Noisy), Common Voice (Multilingual), TIMIT, WSJ0-2 (Wall Street Journal)",
-        "type": "dataset"
-      },
-      {
-        "id": "metric_字符错误率_char_error_rate_cer_字词错误率_word_e",
-        "label": "字符错误率 (Char Error Rate, CER) / 字词错误率 (Word Error Rate, WER)",
-        "type": "metric"
-      },
-      {
-        "id": "bm_hugging_face_asr_leaderboard_librispee",
-        "label": "Hugging Face ASR Leaderboard",
+        "id": "bm_common_voice__1",
+        "label": "Common Voice",
         "type": "benchmark"
       },
       {
-        "id": "d_librispeech_ted_talks_multitask",
-        "label": "LibriSpeech, TED Talks, MultiTask",
-        "type": "dataset"
-      },
-      {
-        "id": "metric_wer_cer_推理速度_fps",
-        "label": "WER, CER, 推理速度 (FPS)",
-        "type": "metric"
-      },
-      {
-        "id": "bm_kaggle_speech_recognition_competitions",
-        "label": "Kaggle Speech Recognition Competitions",
+        "id": "bm_aishell_1__2",
+        "label": "AIShell-1",
         "type": "benchmark"
       },
       {
-        "id": "d_speech_commands_audioset_librivox",
-        "label": "Speech Commands, AudioSet, LibriVox",
-        "type": "dataset"
-      },
-      {
-        "id": "metric_wer_cer_计算资源消耗",
-        "label": "WER, CER, 计算资源消耗",
-        "type": "metric"
-      },
-      {
-        "id": "bm_librispeech__3",
-        "label": "LibriSpeech",
+        "id": "bm_switchboard__3",
+        "label": "Switchboard",
         "type": "benchmark"
       },
       {
-        "id": "bm_common_voice_multilingual___4",
-        "label": "Common Voice (Multilingual)",
+        "id": "bm_open_asr_leaderboard__4",
+        "label": "Open ASR Leaderboard",
         "type": "benchmark"
       },
       {
-        "id": "bm_timit__5",
-        "label": "TIMIT",
-        "type": "benchmark"
-      },
-      {
-        "id": "tr_多语言语音识别",
-        "label": "多语言语音识别",
+        "id": "tr_whisper",
+        "label": "whisper",
         "type": "trend"
       },
       {
-        "id": "tr_长文本语音识别",
-        "label": "长文本语音识别",
-        "type": "trend"
-      },
-      {
-        "id": "tr_动态环境中的asr",
-        "label": "动态环境中的ASR",
-        "type": "trend"
-      },
-      {
-        "id": "r_https_paperswithcode_com_sota_automati",
-        "label": "https://paperswithcode.com/sota/automatic-speech-recognition",
+        "id": "r_https_en_wikipedia_org_wiki_speech_rec",
+        "label": "Speech_recognition\"",
         "type": "resource"
       },
       {
-        "id": "r_https_huggingface_co_spaces_whisper_co",
-        "label": "https://huggingface.co/spaces/whisper-community/leaderboard",
+        "id": "r_https_arxiv_org_abs_2001_04320",
+        "label": "2001.04320\"",
         "type": "resource"
       },
       {
-        "id": "r_https_www_kaggle_com_competitions_spee",
-        "label": "https://www.kaggle.com/competitions/speech-recognition",
+        "id": "r_https_arxiv_org_abs_2103_08847",
+        "label": "2103.08847\"",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_2403_01251",
-        "label": "Efficient Conformer: A Lightweight Transformer for Speech Recognition",
+        "id": "r_https_paperswithcode_com_task_speech_r",
+        "label": "https://paperswithcode.com/task/speech-recognition",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_2405_01234",
-        "label": "Wav2Vec2: A Self-Supervised Approach to Speech Recognition",
+        "id": "r_https_github_com_openai_whisper",
+        "label": "whisper",
         "type": "resource"
       },
       {
-        "id": "r_https_www_librispeech_org_datasets_htm",
-        "label": "https://www.librispeech.org/datasets.html",
+        "id": "r_https_huggingface_co_spaces_hf_audio_o",
+        "label": "open_asr_leaderboard",
+        "type": "resource"
+      },
+      {
+        "id": "r_https_www_openslr_org_12",
+        "label": "12",
         "type": "resource"
       },
       {
         "id": "r_https_commonvoice_mozilla_org",
-        "label": "https://commonvoice.mozilla.org/",
+        "label": "commonvoice.mozilla.org",
         "type": "resource"
       },
       {
-        "id": "r_https_catalog_ldc_upenn_edu_ldc93s1",
-        "label": "https://catalog.ldc.upenn.edu/LDC93S1",
+        "id": "r_http_www_aishelltech_com",
+        "label": "www.aishelltech.com",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_2309_11983",
-        "label": "Connectionist Temporal Classification",
+        "id": "r_https_arxiv_org_abs_2212_04356",
+        "label": "2212.04356",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_1504_01482",
-        "label": "Deep Neural Networks for Acoustic Modeling in Speech Recognition",
+        "id": "r_https_arxiv_org_abs_2005_08100",
+        "label": "2005.08100",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_1412_5567",
-        "label": "Deep Speech: Scaling up end-to-end speech recognition",
+        "id": "r_https_paperswithcode_com_dataset_aishe",
+        "label": "Papers with Code",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_1706_03762",
-        "label": "Attention Is All You Need",
+        "id": "r_https_paperswithcode_com_dataset_switc",
+        "label": "Papers with Code",
         "type": "resource"
       },
       {
-        "id": "r_https_arxiv_org_abs_2303_03329",
-        "label": "A Survey on End-to-End Speech Recognition",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_arxiv_org_abs_2511_09690",
-        "label": "Omnilingual ASR",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_github_com_afmsaif_m2asr",
-        "label": "M2ASR GitHub Repository",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_arxiv_org_abs_2510_06961",
-        "label": "Open ASR Leaderboard",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_www_isca_archive_org_interspeech_2025",
-        "label": "Long-Form ASR Robustness",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_arxiv_org_pdf_2510_12827",
-        "label": "Modern ASR Architectures",
-        "type": "resource"
-      },
-      {
-        "id": "r_https_www_sciencedirect_com_science_article_pii_s15662535240",
-        "label": "Advanced ASR Systems",
+        "id": "r_https_arxiv_org_abs_2202_01277",
+        "label": "论文",
         "type": "resource"
       }
     ],
     "edges": [
       {
-        "source": "c_主流方法",
-        "target": "t_asr自动语音识别",
-        "relation": "belongs_to"
-      },
-      {
-        "source": "m_传统统计模型",
-        "target": "c_主流方法",
-        "relation": "belongs_to"
-      },
-      {
-        "source": "m_深度学习端到端模型",
-        "target": "c_主流方法",
-        "relation": "belongs_to"
-      },
-      {
-        "source": "m_注意力机制与自监督学习",
-        "target": "c_主流方法",
-        "relation": "belongs_to"
-      },
-      {
-        "source": "p_connectionist_temporal_classification",
-        "target": "m_深度学习端到端模型",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_deep_neural_networks_for_acoustic_mode",
-        "target": "m_传统统计模型",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_deep_neural_networks_for_acoustic_mode",
-        "target": "m_深度学习端到端模型",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_deep_speech_scaling_up_end_to_end_spee",
-        "target": "m_深度学习端到端模型",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_attention_is_all_you_need",
-        "target": "m_注意力机制与自监督学习",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_wav2vec_2_0_a_self_supervised_approach",
-        "target": "m_注意力机制与自监督学习",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_a_survey_on_end_to_end_speech_recognit",
-        "target": "m_深度学习端到端模型",
-        "relation": "proposes"
-      },
-      {
-        "source": "p_a_survey_on_end_to_end_speech_recognit",
-        "target": "m_注意力机制与自监督学习",
-        "relation": "proposes"
-      },
-      {
-        "source": "bm_papers_with_code_asr_sota_librispeech_",
+        "source": "bm_papers_with_code_asr_sota__0",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "bm_papers_with_code_asr_sota_librispeech_",
-        "target": "d_librispeech_clean_noisy_common_voice_m",
-        "relation": "evaluated_on"
-      },
-      {
-        "source": "bm_papers_with_code_asr_sota_librispeech_",
-        "target": "metric_字符错误率_char_error_rate_cer_字词错误率_word_e",
-        "relation": "uses"
-      },
-      {
-        "source": "bm_hugging_face_asr_leaderboard_librispee",
+        "source": "bm_common_voice__1",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "bm_hugging_face_asr_leaderboard_librispee",
-        "target": "d_librispeech_ted_talks_multitask",
-        "relation": "evaluated_on"
-      },
-      {
-        "source": "bm_hugging_face_asr_leaderboard_librispee",
-        "target": "metric_wer_cer_推理速度_fps",
-        "relation": "uses"
-      },
-      {
-        "source": "bm_kaggle_speech_recognition_competitions",
+        "source": "bm_aishell_1__2",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "bm_kaggle_speech_recognition_competitions",
-        "target": "d_speech_commands_audioset_librivox",
-        "relation": "evaluated_on"
-      },
-      {
-        "source": "bm_kaggle_speech_recognition_competitions",
-        "target": "metric_wer_cer_计算资源消耗",
-        "relation": "uses"
-      },
-      {
-        "source": "bm_librispeech__3",
+        "source": "bm_switchboard__3",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "bm_common_voice_multilingual___4",
+        "source": "bm_open_asr_leaderboard__4",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "bm_timit__5",
+        "source": "tr_whisper",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "tr_多语言语音识别",
+        "source": "tr_whisper",
+        "target": "p_2019_至今",
+        "relation": "related_to"
+      },
+      {
+        "source": "tr_whisper",
+        "target": "p_whisperrt_turning_whisper_into_a_causa",
+        "relation": "related_to"
+      },
+      {
+        "source": "tr_whisper",
+        "target": "p_adapting_whisper_for_streaming_speech_",
+        "relation": "related_to"
+      },
+      {
+        "source": "tr_whisper",
+        "target": "p_noise_robust_av_asr_using_visual_featu",
+        "relation": "related_to"
+      },
+      {
+        "source": "r_https_en_wikipedia_org_wiki_speech_rec",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "tr_长文本语音识别",
+        "source": "r_https_arxiv_org_abs_2001_04320",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "tr_动态环境中的asr",
+        "source": "r_https_arxiv_org_abs_2103_08847",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_paperswithcode_com_sota_automati",
+        "source": "r_https_paperswithcode_com_task_speech_r",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_huggingface_co_spaces_whisper_co",
+        "source": "r_https_github_com_openai_whisper",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_www_kaggle_com_competitions_spee",
+        "source": "r_https_huggingface_co_spaces_hf_audio_o",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_2403_01251",
-        "target": "t_asr自动语音识别",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_2405_01234",
-        "target": "t_asr自动语音识别",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_2405_01234",
-        "target": "p_wav2vec_2_0_a_self_supervised_approach",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_www_librispeech_org_datasets_htm",
+        "source": "r_https_www_openslr_org_12",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
@@ -867,87 +946,207 @@
         "relation": "related_to"
       },
       {
-        "source": "r_https_catalog_ldc_upenn_edu_ldc93s1",
+        "source": "r_http_www_aishelltech_com",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_2309_11983",
+        "source": "r_https_arxiv_org_abs_2212_04356",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_2309_11983",
-        "target": "p_connectionist_temporal_classification",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_1504_01482",
+        "source": "r_https_arxiv_org_abs_2005_08100",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_1504_01482",
-        "target": "p_deep_neural_networks_for_acoustic_mode",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_1412_5567",
+        "source": "r_https_paperswithcode_com_dataset_aishe",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_1412_5567",
-        "target": "p_deep_speech_scaling_up_end_to_end_spee",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_1706_03762",
+        "source": "r_https_paperswithcode_com_dataset_switc",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_1706_03762",
-        "target": "p_attention_is_all_you_need",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_2303_03329",
+        "source": "r_https_arxiv_org_abs_2202_01277",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_2303_03329",
-        "target": "p_a_survey_on_end_to_end_speech_recognit",
-        "relation": "related_to"
-      },
-      {
-        "source": "r_https_arxiv_org_abs_2511_09690",
+        "source": "p_1989_2011",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_github_com_afmsaif_m2asr",
+        "source": "p_2012_2014",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_abs_2510_06961",
+        "source": "p_2014_2018",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_www_isca_archive_org_interspeech_2025",
+        "source": "p_2019_至今",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_arxiv_org_pdf_2510_12827",
+        "source": "p_whisperrt_turning_whisper_into_a_causa",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       },
       {
-        "source": "r_https_www_sciencedirect_com_science_article_pii_s15662535240",
+        "source": "p_an_explainable_end_to_end_automatic_sp",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_adapting_whisper_for_streaming_speech_",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_noise_robust_av_asr_using_visual_featu",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_pre_training_transformer_decoder_for_e",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_2406_01446_enabling_asr_for_low_resour",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_2510_12827_automatic_speech_recognitio",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_recent_advances_in_end_to_end_automati",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_semi_supervised_asr_by_end_to_end_self",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_specaugment_a_simple_data_augmentation",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_automatic_speech_recognition_using_adv",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_corpus_synthesis_for_zero_shot_asr_dom",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_making_more_of_little_data_improving_l",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_end_to_end_speaker_attributed_asr_with",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_2410_16726_enhancing_low_resource_asr_",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_2303_03329_end_to_end_speech_recogniti",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_listen_attend_and_spell_a_neural_netwo",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_multimodal_in_context_learning_for_asr",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_exploring_neural_transducers_for_end_t",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_large_language_models_are_efficient_le",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_a_purely_end_to_end_system_for_multi_s",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_wav2vec_2_0_a_framework_for_self_super",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_english_conversational_telephone_speec",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_all_neural_online_source_separation_co",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_attention_based_models_for_speech_reco",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_robust_speech_recognition_via_large_sc",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_self_training_for_end_to_end_speech_re",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_wavlm_large_scale_self_supervised_pre_",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_integration_of_speech_separation_diari",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_streaming_end_to_end_multi_talker_spee",
+        "target": "t_asr自动语音识别",
+        "relation": "related_to"
+      },
+      {
+        "source": "p_speecht5_unified_modal_encoder_decoder",
         "target": "t_asr自动语音识别",
         "relation": "related_to"
       }
@@ -955,124 +1154,515 @@
   },
   "needs_research": [
     {
-      "target": "paper:p_connectionist_temporal_classification.url",
-      "reason": "source data did not provide a paper URL",
-      "hint": "Find the arXiv / DOI / official URL for paper: Connectionist Temporal Classification"
-    },
-    {
-      "target": "paper:p_deep_neural_networks_for_acoustic_mode.url",
-      "reason": "source data did not provide a paper URL",
-      "hint": "Find the arXiv / DOI / official URL for paper: Deep Neural Networks for Acoustic Modeling in Speech Recognition"
-    },
-    {
-      "target": "paper:p_deep_speech_scaling_up_end_to_end_spee.url",
-      "reason": "source data did not provide a paper URL",
-      "hint": "Find the arXiv / DOI / official URL for paper: Deep Speech: Scaling up end-to-end speech recognition"
-    },
-    {
-      "target": "paper:p_attention_is_all_you_need.url",
-      "reason": "source data did not provide a paper URL",
-      "hint": "Find the arXiv / DOI / official URL for paper: Attention Is All You Need"
-    },
-    {
-      "target": "paper:p_a_survey_on_end_to_end_speech_recognit.url",
-      "reason": "source data did not provide a paper URL",
-      "hint": "Find the arXiv / DOI / official URL for paper: A Survey on End-to-End Speech Recognition"
-    },
-    {
-      "target": "method:m_多任务学习与迁移学习.papers",
-      "reason": "method details were incomplete or had no representative paper, so it was omitted from visualization_data.methods",
-      "hint": "Find at least one representative paper plus pros/cons for method: 多任务学习与迁移学习"
-    },
-    {
-      "target": "method:m_混合模型架构.papers",
-      "reason": "method details were incomplete or had no representative paper, so it was omitted from visualization_data.methods",
-      "hint": "Find at least one representative paper plus pros/cons for method: 混合模型架构"
-    },
-    {
-      "target": "timeline:attention_is_all_you_need",
-      "reason": "脚本判定该事件标题过于泛化，未作为领域时间线里程碑输出",
-      "hint": "为「Attention Is All You Need」查找更具体的领域内代表论文或替代里程碑"
-    },
-    {
       "target": "methods",
-      "reason": "Some method descriptions and evaluations lack detailed performance metrics or comparative analysis.",
-      "hint": "Incorporate benchmark results or real-world application examples for each method."
+      "reason": "未从 stage1_concepts 或 writer_report.body 中识别出方法类条目",
+      "hint": "按主流技术路线列出 4-8 个方法，并为每个方法关联代表论文"
     },
     {
-      "target": "streaming ASR",
-      "reason": "Limited recent papers explicitly addressing streaming ASR challenges.",
-      "hint": "Search for recent advancements in low-latency ASR models."
+      "target": "paper:p_1989_2011.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: 1989–2011"
     },
     {
-      "target": "noisy ASR",
-      "reason": "Noisy ASR-specific resources are underrepresented.",
-      "hint": "Investigate recent papers on noise-robust ASR techniques."
+      "target": "paper:p_1989_2011.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: 1989–2011"
+    },
+    {
+      "target": "paper:p_2012_2014.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: 2012–2014"
+    },
+    {
+      "target": "paper:p_2012_2014.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: 2012–2014"
+    },
+    {
+      "target": "paper:p_2014_2018.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: 2014–2018"
+    },
+    {
+      "target": "paper:p_2014_2018.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: 2014–2018"
+    },
+    {
+      "target": "paper:p_2019_至今.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: 2019–至今"
+    },
+    {
+      "target": "paper:p_2019_至今.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: 2019–至今"
+    },
+    {
+      "target": "paper:p_whisperrt_turning_whisper_into_a_causa.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: WhisperRT -- Turning Whisper into a Causal Streaming Model - arXiv"
+    },
+    {
+      "target": "paper:p_whisperrt_turning_whisper_into_a_causa.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: WhisperRT -- Turning Whisper into a Causal Streaming Model - arXiv"
+    },
+    {
+      "target": "paper:p_whisperrt_turning_whisper_into_a_causa.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: WhisperRT -- Turning Whisper into a Causal Streaming Model - arXiv"
+    },
+    {
+      "target": "paper:p_an_explainable_end_to_end_automatic_sp.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: An Explainable End-to-End Automatic Speech Recognition Model ..."
+    },
+    {
+      "target": "paper:p_an_explainable_end_to_end_automatic_sp.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: An Explainable End-to-End Automatic Speech Recognition Model ..."
+    },
+    {
+      "target": "paper:p_an_explainable_end_to_end_automatic_sp.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: An Explainable End-to-End Automatic Speech Recognition Model ..."
+    },
+    {
+      "target": "paper:p_adapting_whisper_for_streaming_speech_.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Adapting Whisper for Streaming Speech Recognition via Two-Pass ..."
+    },
+    {
+      "target": "paper:p_adapting_whisper_for_streaming_speech_.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Adapting Whisper for Streaming Speech Recognition via Two-Pass ..."
+    },
+    {
+      "target": "paper:p_adapting_whisper_for_streaming_speech_.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Adapting Whisper for Streaming Speech Recognition via Two-Pass ..."
+    },
+    {
+      "target": "paper:p_noise_robust_av_asr_using_visual_featu.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Noise-Robust AV-ASR Using Visual Features Both in the Whisper ..."
+    },
+    {
+      "target": "paper:p_noise_robust_av_asr_using_visual_featu.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Noise-Robust AV-ASR Using Visual Features Both in the Whisper ..."
+    },
+    {
+      "target": "paper:p_noise_robust_av_asr_using_visual_featu.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Noise-Robust AV-ASR Using Visual Features Both in the Whisper ..."
+    },
+    {
+      "target": "paper:p_pre_training_transformer_decoder_for_e.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Pre-Training Transformer Decoder for End-to-End ASR Model with ..."
+    },
+    {
+      "target": "paper:p_pre_training_transformer_decoder_for_e.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Pre-Training Transformer Decoder for End-to-End ASR Model with ..."
+    },
+    {
+      "target": "paper:p_pre_training_transformer_decoder_for_e.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Pre-Training Transformer Decoder for End-to-End ASR Model with ..."
+    },
+    {
+      "target": "paper:p_2406_01446_enabling_asr_for_low_resour.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: [2406.01446] Enabling ASR for Low-Resource Languages - arXiv"
+    },
+    {
+      "target": "paper:p_2406_01446_enabling_asr_for_low_resour.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: [2406.01446] Enabling ASR for Low-Resource Languages - arXiv"
+    },
+    {
+      "target": "paper:p_2406_01446_enabling_asr_for_low_resour.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: [2406.01446] Enabling ASR for Low-Resource Languages - arXiv"
+    },
+    {
+      "target": "paper:p_2510_12827_automatic_speech_recognitio.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: [2510.12827] Automatic Speech Recognition in the Modern Era - arXiv"
+    },
+    {
+      "target": "paper:p_2510_12827_automatic_speech_recognitio.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: [2510.12827] Automatic Speech Recognition in the Modern Era - arXiv"
+    },
+    {
+      "target": "paper:p_2510_12827_automatic_speech_recognitio.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: [2510.12827] Automatic Speech Recognition in the Modern Era - arXiv"
+    },
+    {
+      "target": "paper:p_recent_advances_in_end_to_end_automati.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Recent advances in end-to-end automatic speech recognition"
+    },
+    {
+      "target": "paper:p_recent_advances_in_end_to_end_automati.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Recent advances in end-to-end automatic speech recognition"
+    },
+    {
+      "target": "paper:p_recent_advances_in_end_to_end_automati.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Recent advances in end-to-end automatic speech recognition"
+    },
+    {
+      "target": "paper:p_semi_supervised_asr_by_end_to_end_self.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Semi-supervised ASR by end-to-end self-training"
+    },
+    {
+      "target": "paper:p_semi_supervised_asr_by_end_to_end_self.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Semi-supervised ASR by end-to-end self-training"
+    },
+    {
+      "target": "paper:p_semi_supervised_asr_by_end_to_end_self.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Semi-supervised ASR by end-to-end self-training"
+    },
+    {
+      "target": "paper:p_specaugment_a_simple_data_augmentation.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Specaugment: A simple data augmentation method for automatic speech recognition"
+    },
+    {
+      "target": "paper:p_specaugment_a_simple_data_augmentation.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Specaugment: A simple data augmentation method for automatic speech recognition"
+    },
+    {
+      "target": "paper:p_specaugment_a_simple_data_augmentation.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Specaugment: A simple data augmentation method for automatic speech recognition"
+    },
+    {
+      "target": "paper:p_automatic_speech_recognition_using_adv.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Automatic Speech Recognition using Advanced Deep Learning ..."
+    },
+    {
+      "target": "paper:p_automatic_speech_recognition_using_adv.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Automatic Speech Recognition using Advanced Deep Learning ..."
+    },
+    {
+      "target": "paper:p_automatic_speech_recognition_using_adv.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Automatic Speech Recognition using Advanced Deep Learning ..."
+    },
+    {
+      "target": "paper:p_corpus_synthesis_for_zero_shot_asr_dom.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Corpus Synthesis for Zero-shot ASR domain Adaptation using Large ..."
+    },
+    {
+      "target": "paper:p_corpus_synthesis_for_zero_shot_asr_dom.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Corpus Synthesis for Zero-shot ASR domain Adaptation using Large ..."
+    },
+    {
+      "target": "paper:p_corpus_synthesis_for_zero_shot_asr_dom.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Corpus Synthesis for Zero-shot ASR domain Adaptation using Large ..."
+    },
+    {
+      "target": "paper:p_making_more_of_little_data_improving_l.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Making more of little data: Improving low-resource automatic speech recognition using data augmentation"
+    },
+    {
+      "target": "paper:p_making_more_of_little_data_improving_l.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Making more of little data: Improving low-resource automatic speech recognition using data augmentation"
+    },
+    {
+      "target": "paper:p_making_more_of_little_data_improving_l.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Making more of little data: Improving low-resource automatic speech recognition using data augmentation"
+    },
+    {
+      "target": "paper:p_end_to_end_speaker_attributed_asr_with.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: End-to-End Speaker-Attributed ASR with Transformer - arXiv"
+    },
+    {
+      "target": "paper:p_end_to_end_speaker_attributed_asr_with.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: End-to-End Speaker-Attributed ASR with Transformer - arXiv"
+    },
+    {
+      "target": "paper:p_end_to_end_speaker_attributed_asr_with.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: End-to-End Speaker-Attributed ASR with Transformer - arXiv"
+    },
+    {
+      "target": "paper:p_2410_16726_enhancing_low_resource_asr_.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: [2410.16726] Enhancing Low-Resource ASR through Versatile TTS"
+    },
+    {
+      "target": "paper:p_2410_16726_enhancing_low_resource_asr_.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: [2410.16726] Enhancing Low-Resource ASR through Versatile TTS"
+    },
+    {
+      "target": "paper:p_2410_16726_enhancing_low_resource_asr_.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: [2410.16726] Enhancing Low-Resource ASR through Versatile TTS"
+    },
+    {
+      "target": "paper:p_2303_03329_end_to_end_speech_recogniti.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: [2303.03329] End-to-End Speech Recognition: A Survey - arXiv"
+    },
+    {
+      "target": "paper:p_2303_03329_end_to_end_speech_recogniti.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: [2303.03329] End-to-End Speech Recognition: A Survey - arXiv"
+    },
+    {
+      "target": "paper:p_2303_03329_end_to_end_speech_recogniti.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: [2303.03329] End-to-End Speech Recognition: A Survey - arXiv"
+    },
+    {
+      "target": "paper:p_listen_attend_and_spell_a_neural_netwo.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Listen, attend and spell: A neural network for large vocabulary conversational speech recognition"
+    },
+    {
+      "target": "paper:p_listen_attend_and_spell_a_neural_netwo.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Listen, attend and spell: A neural network for large vocabulary conversational speech recognition"
+    },
+    {
+      "target": "paper:p_listen_attend_and_spell_a_neural_netwo.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Listen, attend and spell: A neural network for large vocabulary conversational speech recognition"
+    },
+    {
+      "target": "paper:p_multimodal_in_context_learning_for_asr.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Multimodal In-context Learning for ASR of Low-resource Languages"
+    },
+    {
+      "target": "paper:p_multimodal_in_context_learning_for_asr.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Multimodal In-context Learning for ASR of Low-resource Languages"
+    },
+    {
+      "target": "paper:p_multimodal_in_context_learning_for_asr.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Multimodal In-context Learning for ASR of Low-resource Languages"
+    },
+    {
+      "target": "paper:p_exploring_neural_transducers_for_end_t.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Exploring neural transducers for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_exploring_neural_transducers_for_end_t.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Exploring neural transducers for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_exploring_neural_transducers_for_end_t.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Exploring neural transducers for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_large_language_models_are_efficient_le.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Large Language Models are Efficient Learners of Noise-Robust ..."
+    },
+    {
+      "target": "paper:p_large_language_models_are_efficient_le.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Large Language Models are Efficient Learners of Noise-Robust ..."
+    },
+    {
+      "target": "paper:p_large_language_models_are_efficient_le.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Large Language Models are Efficient Learners of Noise-Robust ..."
+    },
+    {
+      "target": "paper:p_a_purely_end_to_end_system_for_multi_s.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: A purely\nend-to-end system for multi-speaker speech recognition"
+    },
+    {
+      "target": "paper:p_a_purely_end_to_end_system_for_multi_s.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: A purely\nend-to-end system for multi-speaker speech recognition"
+    },
+    {
+      "target": "paper:p_a_purely_end_to_end_system_for_multi_s.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: A purely\nend-to-end system for multi-speaker speech recognition"
+    },
+    {
+      "target": "paper:p_wav2vec_2_0_a_framework_for_self_super.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: wav2vec 2.0: A framework for\nself-supervised learning of speech representations"
+    },
+    {
+      "target": "paper:p_wav2vec_2_0_a_framework_for_self_super.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: wav2vec 2.0: A framework for\nself-supervised learning of speech representations"
+    },
+    {
+      "target": "paper:p_wav2vec_2_0_a_framework_for_self_super.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: wav2vec 2.0: A framework for\nself-supervised learning of speech representations"
+    },
+    {
+      "target": "paper:p_english_conversational_telephone_speec.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: English conversational telephone speech recognition by humans and machines"
+    },
+    {
+      "target": "paper:p_english_conversational_telephone_speec.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: English conversational telephone speech recognition by humans and machines"
+    },
+    {
+      "target": "paper:p_english_conversational_telephone_speec.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: English conversational telephone speech recognition by humans and machines"
+    },
+    {
+      "target": "paper:p_all_neural_online_source_separation_co.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: All-neural online source separation, counting, and\ndiarization for meeting analysis"
+    },
+    {
+      "target": "paper:p_all_neural_online_source_separation_co.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: All-neural online source separation, counting, and\ndiarization for meeting analysis"
+    },
+    {
+      "target": "paper:p_all_neural_online_source_separation_co.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: All-neural online source separation, counting, and\ndiarization for meeting analysis"
+    },
+    {
+      "target": "paper:p_attention_based_models_for_speech_reco.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Attention-Based Models for Speech Recognition"
+    },
+    {
+      "target": "paper:p_attention_based_models_for_speech_reco.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Attention-Based Models for Speech Recognition"
+    },
+    {
+      "target": "paper:p_attention_based_models_for_speech_reco.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Attention-Based Models for Speech Recognition"
+    },
+    {
+      "target": "paper:p_robust_speech_recognition_via_large_sc.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Robust speech recognition via large-scale weak supervision"
+    },
+    {
+      "target": "paper:p_robust_speech_recognition_via_large_sc.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Robust speech recognition via large-scale weak supervision"
+    },
+    {
+      "target": "paper:p_robust_speech_recognition_via_large_sc.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Robust speech recognition via large-scale weak supervision"
+    },
+    {
+      "target": "paper:p_self_training_for_end_to_end_speech_re.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Self-training for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_self_training_for_end_to_end_speech_re.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Self-training for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_self_training_for_end_to_end_speech_re.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Self-training for end-to-end speech recognition"
+    },
+    {
+      "target": "paper:p_wavlm_large_scale_self_supervised_pre_.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Wavlm: Large-scale self-supervised\npre-training for full stack speech processing"
+    },
+    {
+      "target": "paper:p_wavlm_large_scale_self_supervised_pre_.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Wavlm: Large-scale self-supervised\npre-training for full stack speech processing"
+    },
+    {
+      "target": "paper:p_wavlm_large_scale_self_supervised_pre_.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Wavlm: Large-scale self-supervised\npre-training for full stack speech processing"
+    },
+    {
+      "target": "paper:p_integration_of_speech_separation_diari.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Integration of speech separation,\ndiarization, and recognition for multi-speaker meetings: System description,\ncomparison, and analysis"
+    },
+    {
+      "target": "paper:p_integration_of_speech_separation_diari.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Integration of speech separation,\ndiarization, and recognition for multi-speaker meetings: System description,\ncomparison, and analysis"
+    },
+    {
+      "target": "paper:p_integration_of_speech_separation_diari.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Integration of speech separation,\ndiarization, and recognition for multi-speaker meetings: System description,\ncomparison, and analysis"
+    },
+    {
+      "target": "paper:p_streaming_end_to_end_multi_talker_spee.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: Streaming end-to-end multi-talker speech\nrecognition"
+    },
+    {
+      "target": "paper:p_streaming_end_to_end_multi_talker_spee.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: Streaming end-to-end multi-talker speech\nrecognition"
+    },
+    {
+      "target": "paper:p_streaming_end_to_end_multi_talker_spee.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: Streaming end-to-end multi-talker speech\nrecognition"
+    },
+    {
+      "target": "paper:p_speecht5_unified_modal_encoder_decoder.year",
+      "reason": "source data did not provide a reliable publication year",
+      "hint": "Find the publication year for paper: SpeechT5: Unified-modal encoder-decoder pre-training for\nspoken language processing"
+    },
+    {
+      "target": "paper:p_speecht5_unified_modal_encoder_decoder.authors",
+      "reason": "source data did not provide reliable authors",
+      "hint": "Find the author list for paper: SpeechT5: Unified-modal encoder-decoder pre-training for\nspoken language processing"
+    },
+    {
+      "target": "paper:p_speecht5_unified_modal_encoder_decoder.url",
+      "reason": "source data did not provide a paper URL",
+      "hint": "Find the arXiv / DOI / official URL for paper: SpeechT5: Unified-modal encoder-decoder pre-training for\nspoken language processing"
     }
   ],
-  "quality_report": {
-    "overall_score": 8.5,
-    "modules": {
-      "paper_timeline_links": {
-        "overall_score": null,
-        "enhancement_summary": "Skipped by snapshot.",
-        "skipped": true
-      },
-      "method_details": {
-        "overall_score": null,
-        "enhancement_summary": "Skipped by snapshot.",
-        "skipped": true
-      },
-      "method_links": {
-        "overall_score": null,
-        "enhancement_summary": "Skipped by snapshot.",
-        "skipped": true
-      },
-      "frontier_sources": {
-        "overall_score": null,
-        "enhancement_summary": "Skipped by snapshot.",
-        "skipped": true
-      },
-      "frontier_descriptions": {
-        "overall_score": 9,
-        "major_issues": [],
-        "enhancement_summary": "所有前沿卡片描述已优化为简洁中文总结，突出技术重点与重要性。"
-      },
-      "benchmark_descriptions": {
-        "overall_score": 8,
-        "major_issues": [],
-        "enhancement_summary": "为每个基准测试提供了独特且具体的中文描述，突出了数据集、评估任务和领域意义。"
-      }
-    },
-    "final_metrics": {
-      "overview_ready": true,
-      "timeline_events": 6,
-      "papers": {
-        "count": 6,
-        "with_year_ratio": 1.0,
-        "with_url_ratio": 1.0
-      },
-      "methods": {
-        "count": 3,
-        "linked_to_papers_ratio": 1.0
-      },
-      "benchmarks": {
-        "count": 6,
-        "with_score_ratio": 0.0
-      },
-      "frontiers": {
-        "count": 3,
-        "linked_ratio": 0.0
-      },
-      "resources": {
-        "count": 19,
-        "with_url_ratio": 1.0
-      },
-      "graph": {
-        "nodes": 45,
-        "edges": 52
-      },
-      "needs_research": 11
-    }
-  }
+  "quality_report": {}
 }

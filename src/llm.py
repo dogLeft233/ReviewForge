@@ -366,8 +366,22 @@ class LLM:
                     )
                 )
 
-                # 将 LLM 回复（含 function_call）追加到 messages
-                all_messages.append({"role": "assistant", "content": response_text})
+                # 重新构造带 tool_calls 的 assistant 消息（不依赖 response_text 原始字符串）
+                assistant_msg = {"role": "assistant"}
+                # 提取 reasoning_content（DeepSeek 多轮对话必须回传）
+                try:
+                    data = json.loads(response_text)
+                    if isinstance(data, dict) and data.get("reasoning_content"):
+                        assistant_msg["reasoning_content"] = data["reasoning_content"]
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                # 从 parsed 中重建 function_call 结构
+                if tc.get("id"):
+                    assistant_msg["tool_calls"] = [
+                        {"id": t["id"], "type": "function", "function": t["function"]}
+                        for t in parsed
+                    ]
+                all_messages.append(assistant_msg)
                 # 将工具结果追加为 tool 消息
                 all_messages.append({
                     "role": "tool",
@@ -387,14 +401,16 @@ class LLM:
         # 尝试从响应中提取 ```json ... ``` 块
         json_blocks = re.findall(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
         if not json_blocks:
-            # 尝试直接解析整个响应
+            # 检查直接 JSON 解析（MiniMax/SiliconFlow 返回格式）
             try:
                 data = json.loads(response_text)
                 if isinstance(data, dict) and "tool_calls" in data:
                     return data["tool_calls"]
+                # 也支持直接返回 tool_calls 列表（某些 API 格式）
+                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict) and "function" in data[0]:
+                    return data
             except json.JSONDecodeError:
                 pass
-            return []
 
         for block in json_blocks:
             try:
@@ -403,6 +419,54 @@ class LLM:
                     return data["tool_calls"]
             except json.JSONDecodeError:
                 continue
+
+        # MiniMax 等模型使用 [TOOL_CALL]...[/TOOL_CALL] 格式
+        tool_call_blocks = re.findall(
+            r'\[TOOL_CALL\](.*?)\[/TOOL_CALL\]', response_text, re.DOTALL
+        )
+        all_parsed_calls: list[dict[str, Any]] = []
+        import uuid
+        for block in tool_call_blocks:
+            # 提取 tool name
+            tool_match = re.search(r'^\s*\{?\s*tool\s*[=:]\s*"([^"]+)"', block, re.MULTILINE)
+            if not tool_match:
+                tool_match = re.search(r'^\s*\{?\s*"tool"\s*[=:]\s*"([^"]+)"', block, re.MULTILINE)
+            if not tool_match:
+                continue
+            tool_name = tool_match.group(1)
+
+            # 提取 args（支持 --key "value" 和 --key value 格式）
+            args_str = block[tool_match.end():]
+            args = {}
+            # 匹配 --key "value" 或 --key 'value'
+            kv_matches = re.findall(r'--(\w+)\s+"([^"]*)"', args_str)
+            for k, v in kv_matches:
+                try:
+                    args[k] = json.loads(v)
+                except json.JSONDecodeError:
+                    args[k] = v
+            # 匹配 --key value（无引号）
+            kv_matches2 = re.findall(r'--(\w+)\s+([^(?:\s|"|\'|,)])+', args_str)
+            for k, v in kv_matches2:
+                v = v.strip().rstrip(',')
+                try:
+                    args[k] = json.loads(v)
+                except json.JSONDecodeError:
+                    args[k] = v
+
+            tc_id = uuid.uuid4().hex[:24]
+            all_parsed_calls.append({
+                "id": tc_id,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(args, ensure_ascii=False)
+                }
+            })
+
+        if all_parsed_calls:
+            return all_parsed_calls
+
         return []
 
     def _execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
@@ -411,6 +475,8 @@ class LLM:
 
         if tool_name == "web_search":
             from src.tools.web_search import web_search as ws
+            logger.debug("[web_search] query=%s count=%s freshness=%s",
+                         arguments["query"], arguments.get("count", 10), arguments.get("freshness"))
             results = ws(
                 query=arguments["query"],
                 count=arguments.get("count", 10),
@@ -441,51 +507,35 @@ class LLM:
             except Exception as e:
                 return f"Failed to fetch {arguments['url']}: {type(e).__name__}: {e}"
 
-        elif tool_name == "explorer_overview":
-            from src.explorer import ExplorerAgent
-            explorer = ExplorerAgent(llm=self)
-            result = explorer._run_stage1(arguments["topic"])
-            return json.dumps(result, ensure_ascii=False, indent=2)
-
         elif tool_name == "run_explorer":
-            from src.agent.skills.core_skill import _run_explorer
-            return _run_explorer(topic=arguments["topic"])
+            from src.agent.skills.core_skill import run_explorer
+            return run_explorer(topic=arguments["topic"])
 
         elif tool_name == "run_explorer_async":
             import threading
-            from src.agent.skills.core_skill import _run_explorer_async
+            from src.agent.skills.core_skill import run_explorer_async
             topic = arguments["topic"]
-            thread = threading.Thread(target=_run_explorer_async, kwargs={"topic": topic})
+            thread = threading.Thread(target=run_explorer_async, kwargs={"topic": topic})
             thread.daemon = True
             thread.start()
             return f"⏳ 领域探索任务已启动（topic: {topic}），UI 将自动更新进度..."
 
-        elif tool_name == "bfs_search":
-            from src.agent.skills.bfs_search_skill import _bfs_search
-            return _bfs_search(
-                question=arguments["question"],
-                expand_layers=arguments.get("expand_layers", 2),
-                search_papers_count=arguments.get("search_papers_count", 20),
-            )
+        elif tool_name == "run_searcher":
+            from src.agent.skills.core_skill import run_searcher
+            return run_searcher(topic=arguments["topic"])
 
-        elif tool_name == "bfs_search_async":
+        elif tool_name == "run_pipeline":
+            from src.agent.skills.core_skill import run_pipeline
+            return run_pipeline(topic=arguments["topic"])
+
+        elif tool_name == "run_pipeline_async":
             import threading
-            from src.agent.skills.bfs_search_skill import _bfs_search_async
-            thread = threading.Thread(
-                target=_bfs_search_async,
-                kwargs={
-                    "question": arguments["question"],
-                    "expand_layers": arguments.get("expand_layers", 2),
-                    "search_papers_count": arguments.get("search_papers_count", 20),
-                }
-            )
+            from src.agent.skills.core_skill import run_pipeline_async
+            topic = arguments["topic"]
+            thread = threading.Thread(target=run_pipeline_async, kwargs={"topic": topic})
             thread.daemon = True
             thread.start()
-            return f"⏳ BFS 搜索任务已启动（question: {arguments['question']}），UI 将自动更新进度..."
-
-        elif tool_name == "multi_source_search":
-            from src.agent.skills.multi_source_searcher_skill import _multi_source_search
-            return _multi_source_search(question=arguments["question"])
+            return f"⏳ 完整流水线任务已启动（topic: {topic}），后台执行中..."
 
         else:
             return f"Unknown tool: {tool_name}"
@@ -529,9 +579,10 @@ class LLM:
         }
 
         # 思考深度控制：优先使用调用时传入的值，其次使用配置默认值
+        # SiliconFlow 使用 thinking_budget 参数
         effective_thinking = thinking if thinking is not None else self._cfg.thinking
         if effective_thinking is not None:
-            payload["thinking"] = effective_thinking
+            payload["thinking_budget"] = int(effective_thinking)
 
         logger.debug("[LLM] Request payload: model=%s, messages_count=%d, temp=%.2f",
                      self._cfg.model, len(all_messages), self._cfg.temperature)

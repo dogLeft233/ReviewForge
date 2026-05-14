@@ -1,45 +1,51 @@
-"""BFS 论文搜索器 — 仿 PaSa 架构，支持 reranker 或 embedding 相似度过滤
+"""PaSa 风格 BFS 论文搜索器 — 仿 bytedance/pasa 架构
 
 核心流程（双阶段 BFS）：
-  Stage 1 (search):  用 LLM 生成多个搜索词 → 并行搜索 → reranker/embedding 过滤 → papers_queue
-  Stage 2 (expand):  对每篇论文查引用关系 → reranker/embedding 过滤 → 推入下一层 papers_queue
+  Stage 1 (search):  LLM 生成搜索词 → SerpAPI Google 搜索 → ar5iv 补充摘要 → reranker 过滤
+  Stage 2 (expand):  ar5iv 获取 bibliography → SerpAPI 标题搜索找 arXiv ID → reranker 过滤
 
 过滤机制：
-  - reranker 模式：重排序后取 top_n（优先）
-  - embedding 模式：cosine similarity >= 0.50 才纳入
+  - reranker 模式：reranker 打分，score >= score_threshold 才纳入
+
+特点（相比原版）：
+  - 纯 SerpAPI + ar5iv，不依赖 Semantic Scholar API
+  - SerpAPI 使用普通 Google 引擎 + site:arxiv.org（PaSa 风格）
+  - ar5iv 提供完整 bibliography，支持精准的引用扩展
 
 用法:
     from src.seacher.bfs_search import BFSSearcher
     from src.llm import LLM
-    from src.embedding import EmbeddingClient
     from src.reranker import RerankerClient
 
     llm = LLM(api_key="...", model="Qwen/Qwen3-8B")
-    embed = EmbeddingClient()
-    reranker = RerankerClient()          # 优先使用 reranker
-    searcher = BFSSearcher(llm=llm, embed=embed, reranker=reranker)
-
-    results = searcher.search("LoRA 大模型微调")
-    results = searcher.search("扩散模型图像生成", expand_layers=2)
+    reranker = RerankerClient()
+    searcher = BFSSearcher(llm=llm, reranker=reranker)
+    results = searcher.search("LoRA fine-tuning", expand_layers=2)
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.explorer.explorer_report import ExplorerReport
+from src.retrievers.ar5iv import Ar5ivRetriever
+from src.retrievers.serpapi import SerpAPIRetriever
+
 logger = logging.getLogger(__name__)
 
 # ── 超参数默认常量 ────────────────────────────────────────────
 DEFAULT_SEARCH_QUERIES = 5       # LLM 生成多少个搜索词
-DEFAULT_SEARCH_PAPERS = 20       # 每个搜索词取多少篇论文
-DEFAULT_EXPAND_PAPERS = 15       # 每层最多扩展多少篇论文
-DEFAULT_EXPAND_LAYERS = 2        # BFS 最大层数（0=只用搜索，1=搜索+一层引文）
-DEFAULT_THREADS = 1             # 并行线程数
-SIMILARITY_THRESHOLD = 0.50      # 嵌入相似度阈值
+DEFAULT_SEARCH_PAPERS = 20      # 每个搜索词取多少篇论文
+DEFAULT_EXPAND_PAPERS = 15      # 每层最多扩展多少篇论文
+DEFAULT_EXPAND_LAYERS = 2       # BFS 最大层数（0=只用搜索，1=搜索+一层引文，2=两层）
+DEFAULT_THREADS = 4             # 并行线程数
+DEFAULT_SCORE_THRESHOLD = 0.3   # reranker score 阈值（0.5 太严格，0.3 更实用）
+
 
 # ── 异常 ─────────────────────────────────────────────────────
 
@@ -58,25 +64,21 @@ class RetrievalError(BFSSearchError):
 @dataclass(slots=True)
 class SearchQuery:
     """LLM 生成的单个搜索词"""
-
     query: str           # 搜索词/句
-    reason: str = ""    # 搜索理由
+    reason: str = ""     # 搜索理由
 
 
 @dataclass(slots=True)
 class PaperNode:
     """论文节点（BFS 树中的节点）"""
-
     title: str
     paper_id: str        # arXiv ID（去重 key）
     abstract: str = ""
     depth: int = 0      # BFS 层级（root=0，引用=1，引用-of引用=2...）
-    select_score: float = 0.0  # 评分（reranker score 或 embedding cosine）
-    child: dict[str, list["PaperNode"]] = field(default_factory=dict)  # section →子论文
-    source: str = ""     # 来源描述
-    cited_by: list["PaperNode"] = field(default_factory=list)  # 该论文的参考文献
+    select_score: float = 0.0  # reranker relevance score
+    source: str = ""    # 来源描述
+    cited_by: list = field(default_factory=list)  # 该论文的参考文献（兼容）
 
-    # 用于去重的哈希 key
     @property
     def dedup_key(self) -> str:
         return self.paper_id or self.title.lower()
@@ -86,32 +88,35 @@ class PaperNode:
 
 
 class BFSSearcher:
-    """BFS 论文搜索引擎（PaSa 风格，reranker 替代 embedding 做相关性过滤）
+    """PaSa 风格 BFS 论文搜索引擎
+
+    用 reranker 替代 PaSa 的 LLM Selector，实现纯 SerpAPI + ar5iv 架构。
 
     Attributes:
-        llm: LLM 实例（用于生成搜索词）
-        embed: 嵌入模型客户端（reranker 未提供时用于 cosine 过滤）
-        reranker: 重排序客户端（优先；reranker 未提供则降级到 embedding）
+        llm: LLM 实例（仅用于生成搜索词）
+        embed: 嵌入模型（reranker 未提供时的 fallback）
+        reranker: 重排序客户端（必须，用于替代 LLM Selector）
         search_queries_count: 每轮生成多少个搜索词
         search_papers_count: 每个搜索词取多少篇论文
         expand_papers_count: 每层最多扩展多少篇论文
         expand_layers: BFS 最大层数
-        similarity_threshold: 相似度过滤阈值（embedding 模式专用）
-        rerank_top_n: 重排序后保留前 n 条（reranker 模式，None=全部）
+        score_threshold: reranker 过滤阈值（默认 0.5）
+        rerank_top_n: reranker 返回前 n 条（None=全部）
+        threads_num: 并行线程数
     """
 
     def __init__(
         self,
         llm: Any,
-        embed: Any,
+        embed: Any = None,
         reranker: Any = None,
         *,
         search_queries_count: int = DEFAULT_SEARCH_QUERIES,
         search_papers_count: int = DEFAULT_SEARCH_PAPERS,
         expand_papers_count: int = DEFAULT_EXPAND_PAPERS,
         expand_layers: int = DEFAULT_EXPAND_LAYERS,
-        similarity_threshold: float = SIMILARITY_THRESHOLD,
-        rerank_top_n: int | None = 20,
+        score_threshold: float = DEFAULT_SCORE_THRESHOLD,
+        rerank_top_n: int | None = None,
         threads_num: int = DEFAULT_THREADS,
     ) -> None:
         self.llm = llm
@@ -121,15 +126,14 @@ class BFSSearcher:
         self.search_papers_count = search_papers_count
         self.expand_papers_count = expand_papers_count
         self.expand_layers = expand_layers
-        self.similarity_threshold = similarity_threshold
+        self.score_threshold = score_threshold
         self.rerank_top_n = rerank_top_n
         self.threads_num = threads_num
 
         logger.debug(
-            "BFSSearcher init: embed=%s reranker=%s threshold=%.2f layers=%d",
-            getattr(embed, "model", "?"),
+            "BFSSearcher(PaSa): reranker=%s threshold=%.2f layers=%d",
             getattr(reranker, "model", "?") if reranker else None,
-            similarity_threshold, expand_layers,
+            score_threshold, expand_layers,
         )
 
     # ── 主入口 ──────────────────────────────────────────────
@@ -139,55 +143,150 @@ class BFSSearcher:
         question: str,
         expand_layers: int | None = None,
     ) -> list[PaperNode]:
-        """执行完整 BFS 搜索流程
+        """执行完整 PaSa BFS 搜索流程
 
-        参数:
+        Args:
             question: 用户研究问题
             expand_layers: BFS 最大层数（None=用默认值）
 
-        返回:
+        Returns:
             按 select_score 排序的 PaperNode 列表
         """
         layers = expand_layers if expand_layers is not None else self.expand_layers
-        logger.info("expand_layers config=%s → actual layers=%d (expand_papers_count=%d)",
-                    self.expand_layers, layers, self.expand_papers_count)
-        if layers > 0:
-            logger.info("BFS 扩展层数 depth in [0, %d]，expand_papers_count=%d", layers, self.expand_papers_count)
+        logger.info(
+            "PaSa BFS: question='%s' layers=%d expand_papers=%d threshold=%.2f",
+            question, layers, self.expand_papers_count, self.score_threshold,
+        )
 
-        # ── Stage 1: 生成搜索词 + 并行搜索 ──────────────────
+        # ── Stage 1: 搜索阶段 ────────────────────────────────
+        t0 = time.time()
         search_queries = self._generate_queries(question)
-        logger.info("Stage 1: 生成了 %d 个搜索词", len(search_queries))
+        logger.info("[Stage 1] 生成了 %d 个搜索词", len(search_queries))
+        query_strs = [sq.query for sq in search_queries]
 
-        papers_queue = self._search_all(search_queries)
-        logger.info("Stage 1 完成: papers_queue 累计 %d 篇", len(papers_queue))
+        stage1_papers = self._search_all_pasa(question, query_strs)
+        logger.info("[Stage 1] 搜索阶段完成: %d 篇论文（耗时 %.1fs）", len(stage1_papers), time.time() - t0)
+
+        if not stage1_papers:
+            logger.warning("[Stage 1] 未找到任何论文，请检查 SerpAPI / ar5iv 连接")
+            return []
 
         # ── Stage 2: BFS 引文扩展 ────────────────────────────
         if layers > 0:
-            papers_queue = self._bfs_expand(papers_queue, layers)
+            t1 = time.time()
+            all_papers = self._bfs_expand(stage1_papers, layers, question)
+            logger.info("[Stage 2] BFS 扩展完成: %d 篇论文（耗时 %.1fs）", len(all_papers), time.time() - t1)
+        else:
+            all_papers = list(stage1_papers)
 
-        # ── 全局去重 ─────────────────────────────────────────
-        papers = self._deduplicate(papers_queue)
-
-        # ── 按相似度排序 ─────────────────────────────────────
+        # ── 全局去重 + 排序 ──────────────────────────────────
+        papers = self._deduplicate(all_papers)
         papers.sort(key=lambda p: p.select_score, reverse=True)
-
+        logger.info("[Done] 共 %d 篇论文（去重后）", len(papers))
         return papers
 
-    # ── Stage 1: 查询生成 + 搜索 ────────────────────────────
+    def search_with_explorer_report(
+        self,
+        question: str,
+        explorer_report: ExplorerReport,
+        expand_layers: int | None = None,
+    ) -> list[PaperNode]:
+        """使用 ExplorerReport 领域知识执行 BFS 搜索
 
-    def _generate_queries(self, question: str) -> list[SearchQuery]:
-        """调用 LLM 生成多个搜索词描述（单轮，无工具调用）"""
+        Args:
+            question: 用户研究问题
+            explorer_report: ExplorerAgent 返回的领域探索报告
+            expand_layers: BFS 最大层数（None=用默认值）
+
+        Returns:
+            按 select_score 排序的 PaperNode 列表
+        """
+        layers = expand_layers if expand_layers is not None else self.expand_layers
+        logger.info(
+            "PaSa BFS with ExplorerReport: question='%s' layers=%d expand_papers=%d threshold=%.2f",
+            question, layers, self.expand_papers_count, self.score_threshold,
+        )
+
+        # ── Stage 1: 搜索阶段（使用 ExplorerReport 增强查询）──────────
+        t0 = time.time()
+        search_queries = self._generate_queries(question, explorer_report)
+        logger.info("[Stage 1] 生成了 %d 个搜索词（基于 ExplorerReport）", len(search_queries))
+        query_strs = [sq.query for sq in search_queries]
+
+        stage1_papers = self._search_all_pasa(question, query_strs)
+        logger.info("[Stage 1] 搜索阶段完成: %d 篇论文（耗时 %.1fs）", len(stage1_papers), time.time() - t0)
+
+        if not stage1_papers:
+            logger.warning("[Stage 1] 未找到任何论文，请检查 SerpAPI / ar5iv 连接")
+            return []
+
+        # ── Stage 2: BFS 引文扩展 ────────────────────────────
+        if layers > 0:
+            t1 = time.time()
+            all_papers = self._bfs_expand(stage1_papers, layers, question)
+            logger.info("[Stage 2] BFS 扩展完成: %d 篇论文（耗时 %.1fs）", len(all_papers), time.time() - t1)
+        else:
+            all_papers = list(stage1_papers)
+
+        # ── 全局去重 + 排序 ──────────────────────────────────
+        papers = self._deduplicate(all_papers)
+        papers.sort(key=lambda p: p.select_score, reverse=True)
+        logger.info("[Done] 共 %d 篇论文（去重后）", len(papers))
+        return papers
+
+    # ── Stage 1: 查询生成 ───────────────────────────────────
+
+    def _generate_queries(self, question: str, explorer_report: ExplorerReport | None = None) -> list[SearchQuery]:
+        """调用 LLM 生成多个搜索词（PaSa Crawler 的第一步）
+
+        Args:
+            question: 用户研究问题
+            explorer_report: 可选的 Explorer 报告，提供领域知识以生成更精准的查询词
+        """
+        # 构建领域知识上下文
+        domain_context = ""
+        if explorer_report:
+            sections = []
+
+            if explorer_report.stage1_overview:
+                sections.append(f"## Domain Overview\n{explorer_report.stage1_overview[:500]}")
+
+            if explorer_report.stage1_concepts:
+                concepts = ", ".join(explorer_report.stage1_concepts[:10])
+                sections.append(f"## Core Concepts\n{concepts}")
+
+            if explorer_report.stage2_classics:
+                classic_titles = [f"{c.title} ({c.year})" for c in explorer_report.stage2_classics[:5]]
+                sections.append(f"## Classic Works\n" + "; ".join(classic_titles))
+
+            if explorer_report.stage3_benchmarks:
+                benchmarks = [b.name for b in explorer_report.stage3_benchmarks[:5]]
+                sections.append(f"## Important Benchmarks\n" + ", ".join(benchmarks))
+
+            if explorer_report.stage3_trends:
+                trends = ", ".join(explorer_report.stage3_trends[:5])
+                sections.append(f"## Research Trends\n{trends}")
+
+            if sections:
+                domain_context = "\n\nUse the following domain knowledge to generate more targeted queries:\n\n" + "\n\n".join(sections) + "\n"
+
         prompt = (
-            f"You are an academic search researcher. Generate {self.search_queries_count} search queries for arXiv, "
-            f"covering different angles (broad/precise/author/classification/latest trends).\n\n"
-            f"Research topic: {question}\n\n"
-            f"Output format (one per line): SEARCH|<English search query>|<English reason>\n"
-            f"Examples:\n"
-            f"SEARCH|ti:LoRA fine-tuning large language models|match LoRA in LLMs|\n"
-            f"SEARCH|attention mechanism transformer ASR end-to-end|precise match for ASR architectures|\n"
-            f"SEARCH|author:Geoffrey Hinton speech recognition neural networks|author authority|\n"
-            f"SEARCH|conversational AI automatic speech recognition 2024|latest trends|\n"
-            f"IMPORTANT: All search queries MUST be in English. Do NOT output Chinese queries."
+            f"You are an academic research assistant. Generate {self.search_queries_count} diverse English search queries for arXiv.\n\n"
+            f"Research topic: {question}\n"
+            f"{domain_context}"
+            f"Requirements:\n"
+            f"- Each query should be 3-8 words maximum\n"
+            f"- Cover different angles: broad topic, specific techniques, recent trends, datasets\n"
+            f"- You MUST use the domain knowledge above to generate queries that reference actual methods, benchmarks, and techniques mentioned\n"
+            f"- Prioritize queries related to: classic methods mentioned, key benchmarks, core techniques in the domain\n"
+            f"- Output ONLY English phrases, no operators like author: or ti:\n\n"
+            f"Output format (one per line, nothing else):\n"
+            f"SEARCH|<English query>\n\n"
+            f"Good examples:\n"
+            f"SEARCH|<topic> deep learning|\n"
+            f"SEARCH|<topic> transformer architecture|\n"
+            f"SEARCH|<topic> benchmark dataset|\n"
+            f"SEARCH|<topic> survey review|"
         )
 
         reply = self.llm.chat(
@@ -209,477 +308,362 @@ class BFSSearcher:
                 q = parts[1].strip()
                 reason = parts[2].strip() if len(parts) > 2 else ""
                 if q in seen:
-                    dropped.append(f"跳过（重复）: {line}")
+                    dropped.append(f"重复: {q}")
                 else:
                     seen.add(q)
                     queries.append(SearchQuery(query=q, reason=reason))
             elif line.startswith("SEARCH|"):
-                # 兼容没有明确字段前缀的格式
                 rest = line[7:].strip()
-                if rest in seen:
-                    dropped.append(f"跳过（重复）: {line}")
-                else:
+                if rest and rest not in seen:
                     seen.add(rest)
                     queries.append(SearchQuery(query=rest, reason=""))
-            else:
-                dropped.append(f"跳过（格式不符）: {line}")
-
 
         for d in dropped:
             logger.debug("query 丢弃: %s", d)
-        logger.info("Stage 1: 生成 %d/%d 个搜索词（丢弃 %d 个）", len(queries), len(queries), len(dropped))
+        logger.info("[Stage 1] 生成 %d/%d 个搜索词（丢弃 %d 个）", len(queries), len(queries), len(dropped))
 
         if not queries:
-            # 保底：用原问题作搜索词
             queries.append(SearchQuery(query=question, reason="原始问题"))
             logger.warning("LLM 未生成有效搜索词，用原始问题代替")
 
         return queries
 
-    def _search_all(self, search_queries: list[SearchQuery]) -> list[PaperNode]:
-        """并行执行所有搜索词，按阈值过滤后合并"""
-        all_papers: list[PaperNode] = []
+    # ── Stage 1: PaSa 风格搜索 ───────────────────────────────
+
+    def _search_all_pasa(self, question: str, query_strs: list[str]) -> list[PaperNode]:
+        """PaSa 风格搜索：SerpAPI(google+arxiv) + ar5iv 摘要 + reranker 过滤
+
+        流程：
+          1. 对每个搜索词：SerpAPI Google 搜索获取 arXiv ID
+          2. 对所有找到的 arXiv ID：ar5iv 抓摘要
+          3. 统一 reranker 打分
+          4. score >= threshold 才保留
+        """
+        all_candidates: list[tuple[str, str, str]] = []  # (arxiv_id, title, abstract)
+
+        # Step 1: SerpAPI 搜索所有查询词
+        with SerpAPIRetriever() as serp:
+            for q in query_strs:
+                papers = serp.search_google(q, max_results=self.search_papers_count)
+                logger.info("[Stage 1] SerpAPI(q='%s') → %d papers", q[:40], len(papers))
+                for p in papers:
+                    m = re.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
+                    if m:
+                        all_candidates.append((m.group(1), p.title, p.abstract))
+
+        if not all_candidates:
+            logger.warning("[Stage 1] 所有搜索词均未返回 arXiv ID")
+            return []
+
+        # 全局去重（按 arXiv ID）
+        seen_ids: dict[str, tuple[str, str]] = {}
+        for aid, title, abstract in all_candidates:
+            if aid not in seen_ids:
+                seen_ids[aid] = (title, abstract)
+
+        logger.info("[Stage 1] SerpAPI 共找到 %d 个 arXiv ID（去重后 %d）", len(all_candidates), len(seen_ids))
+
+        # Step 2: ar5iv 批量获取摘要（提升 abstract 质量）
+        id_list = list(seen_ids.keys())
+        abstracts = self._fetch_ar5iv_abstracts(id_list, seen_ids)
+
+        # Step 3: 构造成 PaperNode 列表（临时节点，无 score）
+        nodes: list[PaperNode] = []
+        for aid in id_list:
+            title, _ = seen_ids[aid]
+            abstract = abstracts.get(aid, "")
+            nodes.append(PaperNode(
+                title=title,
+                paper_id=aid,
+                abstract=abstract,
+                depth=0,
+                select_score=0.0,
+                source=f"Search: {question[:30]}",
+            ))
+
+        # Step 4: reranker 打分 + threshold 过滤
+        scored = self._rerank_papers(question, nodes)
+        logger.info("[Stage 1] reranker 过滤后: %d/%d 篇论文（threshold=%.2f）", len(scored), len(nodes), self.score_threshold)
+        return scored
+
+    def _fetch_ar5iv_abstracts(
+        self,
+        arxiv_ids: list[str],
+        fallback_titles: dict[str, tuple[str, str]],
+    ) -> dict[str, str]:
+        """批量从 ar5iv 获取论文摘要（多线程）"""
+        results: dict[str, str] = {}
+
+        def fetch_one(aid: str) -> tuple[str, str]:
+            try:
+                with Ar5ivRetriever() as ar5iv:
+                    html = ar5iv.fetch_full_text(aid)
+                if html:
+                    abstract = self._parse_abstract_from_ar5iv(html)
+                    return (aid, abstract)
+                return (aid, "")
+            except Exception as e:
+                logger.debug("ar5iv fetch failed %s: %s", aid, e)
+                return (aid, "")
 
         with ThreadPoolExecutor(max_workers=self.threads_num) as pool:
-            futures = {
-                pool.submit(self._search_one_query, sq): sq
-                for sq in search_queries
-            }
-
+            futures = {pool.submit(fetch_one, aid): aid for aid in arxiv_ids}
             for future in as_completed(futures):
-                sq = futures[future]
                 try:
-                    papers = future.result()
-                    all_papers.extend(papers)
-                    logger.debug("搜索词 '%s' → %d 篇论文通过阈值", sq.query, len(papers))
+                    aid, abstract = future.result()
+                    if abstract:
+                        results[aid] = abstract
+                    else:
+                        # Fallback: 用 SerpAPI 返回的 snippet
+                        _, snippet = fallback_titles.get(aid, ("", ""))
+                        results[aid] = snippet
                 except Exception as e:
-                    logger.warning("搜索词 '%s' 失败: %s", sq.query, e)
+                    logger.debug("ar5iv fetch error: %s", e)
 
-        return all_papers
+        found = sum(1 for v in results.values() if v)
+        logger.info("[Stage 1] ar5iv 摘要获取完成: %d/%d（有摘要）", found, len(arxiv_ids))
+        return results
 
-    def _search_one_query(self, sq: SearchQuery) -> list[PaperNode]:
-        """对单个搜索词执行：SerpAPIRetriever → arXiv HTML 直接抓取详情
+    def _parse_abstract_from_ar5iv(self, html: str) -> str:
+        """从 ar5iv HTML 中提取 abstract"""
+        abstract_m = re.search(
+            r'class="abstract mathjax">(.*?)</blockquote>', html, re.DOTALL
+        )
+        if not abstract_m:
+            return ""
+        abstract_raw = abstract_m.group(1)
+        abstract_raw = re.sub(r"<span[^>]*>Abstract:</span>\s*", "", abstract_raw)
+        abstract = re.sub(r"<[^>]+>", "", abstract_raw).strip()
+        return abstract[:1000]
 
-        Stage 1: SerpAPIRetriever (SerpAPI Google 搜索) 提取 arXiv ID
-        Stage 2: 直接抓取 https://arxiv.org/abs/{id} HTML 页面（无 rate limit）
-        """
-        import re as re_module
-        import httpx
-
-        try:
-            # Stage 1: SerpAPI Google 搜索提取 arXiv ID
-            from src.retrievers import SerpAPIRetriever
-            with SerpAPIRetriever() as serp:
-                papers = serp.search(sq.query, max_results=self.search_papers_count)
-
-            if not papers:
-                return []
-
-            # Stage 2: 直接抓取 arXiv abstract page 获取详情（无 rate limit）
-            from src.models import PaperCard
-            enriched = []
-            for p in papers:
-                m = re_module.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
-                if not m:
-                    continue
-                aid = m.group(1)
-                try:
-                    resp = httpx.get(f"https://arxiv.org/abs/{aid}", timeout=15, follow_redirects=True)
-                    if resp.status_code != 200:
-                        continue
-                    html = resp.text
-                    title_m = re_module.search(r"<title>\[[^\]]+\]\s*(.*?)</title>", html)
-                    title = title_m.group(1).strip() if title_m else p.title
-                    abstract_m = re_module.search(
-                        r'class="abstract mathjax">(.*?)</blockquote>', html, re_module.DOTALL
-                    )
-                    # Strip the descriptor span "Abstract:" and remaining tags
-                    abstract_raw = abstract_m.group(1) if abstract_m else ""
-                    abstract_raw = re_module.sub(r"<span[^>]*>Abstract:</span>\s*", "", abstract_raw)
-                    abstract = re_module.sub(r"<[^>]+>", "", abstract_raw).strip()
-                    if not abstract and p.abstract:
-                        abstract = p.abstract
-                    author_m = re_module.search(r'class="authors">([^<]+)', html)
-                    authors_str = author_m.group(1).strip() if author_m else ""
-                    authors = [a.strip() for a in authors_str.split(",")] if authors_str else []
-                    enriched.append(PaperCard(
-                        title=title,
-                        authors=authors,
-                        year=0,
-                        abstract=abstract[:800],
-                        url=f"https://arxiv.org/abs/{aid}",
-                        source="serpapi+arxiv",
-                        method_category="",
-                    ))
-                except Exception as e:
-                    logger.debug("arXiv HTML fetch failed %s: %s", aid, e)
-                    continue
-
-            if not enriched:
-                return []
-
-            if self.reranker:
-                return self._score_by_reranker_search(sq.query, enriched)
-            if self.embed:
-                return self._score_by_embedding(sq.query, enriched)
-            # Fallback: no reranker/embed → return all with default score
-            nodes: list[PaperNode] = []
-            for i, r in enumerate(enriched):
-                nodes.append(PaperNode(
-                    title=r.title,
-                    paper_id=r.url or "",
-                    abstract=r.abstract or "",
-                    depth=0,
-                    select_score=1.0 / (i + 1),  # 递减顺序
-                    source=f"Search: {sq.query}",
-                ))
-            return nodes
-        except Exception as e:
-            raise RetrievalError(f"搜索失败 [{sq.query}]: {e}") from e
-
-    def _score_by_reranker_search(
-        self, query: str, results: list[Any]
+    def _rerank_papers(
+        self,
+        query: str,
+        papers: list[PaperNode],
     ) -> list[PaperNode]:
-        """用 reranker 对搜索结果打分，取 top_n"""
-        docs = [r.abstract or "" for r in results]
+        """用 reranker 对论文列表打分，score >= threshold 的保留"""
+        if not papers:
+            return []
+
+        # Translate query to English for cross-language compatibility with English paper abstracts
+        en_query = self._translate_question_to_english(query)
+        logger.debug("rerank: translated query: '%s' -> '%s'", query, en_query)
+
+        if self.reranker is None:
+            # Fallback: 无 reranker 时，全部保留
+            for p in papers:
+                p.select_score = 1.0
+            return papers
+
+        docs = [p.abstract or "" for p in papers]
+        logger.info("rerank: query='%s', docs count=%d", en_query, len(docs))
         reranked = self.reranker.rerank(
-            query=query,
+            query=en_query,
             documents=docs,
             top_n=self.rerank_top_n,
             return_documents=True,
         )
-        paper_map = {i: r for i, r in enumerate(results)}
-        nodes: list[PaperNode] = []
-        for r in reranked:
-            result = paper_map.get(r.index)
-            if not result:
-                continue
-            nodes.append(PaperNode(
-                title=result.title,
-                paper_id=result.url or "",
-                abstract=result.abstract or "",
-                depth=0,
-                select_score=r.relevance_score,
-                source=f"Search: {query}",
-            ))
-        return nodes
 
-    def _score_by_embedding(
-        self, query: str, results: list[Any]
-    ) -> list[PaperNode]:
-        """用 embedding cosine 相似度过滤"""
-        abstracts = [r.abstract or "" for r in results]
-        query_vec = self.embed.encode(query)
-        abstract_vecs = self.embed.encode_batch(abstracts)
-        nodes: list[PaperNode] = []
-        for result, abstract_vec in zip(results, abstract_vecs):
-            score = self._cosine(query_vec, abstract_vec)
-            if score >= self.similarity_threshold:
-                nodes.append(PaperNode(
-                    title=result.title,
-                    paper_id=result.url or "",
-                    abstract=result.abstract or "",
-                    depth=0,
-                    select_score=score,
-                    source=f"Search: {query}",
-                ))
-        return nodes
+        logger.info("rerank returned %d results: %s", len(reranked), [f"{r.index}:{r.relevance_score:.4f}" for r in reranked])
+
+        score_map = {r.index: r.relevance_score for r in reranked}
+        paper_map = {i: p for i, p in enumerate(papers)}
+
+        logger.debug("rerank results: %s", [f"{r.index}:{r.relevance_score:.4f}" for r in reranked])
+
+        passed: list[PaperNode] = []
+        for i, p in paper_map.items():
+            score = score_map.get(i, 0.0)
+            p.select_score = score
+            if score >= self.score_threshold:
+                passed.append(p)
+                logger.debug("  [rerank] score=%.3f >= %.2f ✓ '%s'", score, self.score_threshold, p.title[:50])
+            else:
+                logger.debug("  [rerank] score=%.3f < %.2f ✗ '%s'", score, self.score_threshold, p.title[:50])
+
+        return passed
+
+    def _translate_question_to_english(self, question: str) -> str:
+        """Translate a research topic/question to English for semantic matching with academic paper abstracts."""
+        prompt = f"Translate this research topic to English for semantic matching with academic paper abstracts. Output ONLY the English text, nothing else.\nTopic: {question}"
+        try:
+            reply = self.llm.chat(
+                external_prompt=prompt,
+                system_prompt="You are a translator. Output ONLY the English translation, nothing else.",
+                temperature=0.0,
+                max_tokens=200,
+            )
+            en = reply.strip()
+            logger.debug("Translated question: '%s' → '%s'", question, en)
+            return en
+        except Exception as e:
+            logger.warning("Translation failed, falling back to original query: %s", e)
+            return question
 
     # ── Stage 2: BFS 引文扩展 ────────────────────────────────
 
-    def _bfs_expand(self, initial_papers: list[PaperNode], layers: int) -> list[PaperNode]:
-        """BFS 引文扩展（从 root 论文出发，逐层扩展引用关系）"""
+    def _bfs_expand(
+        self,
+        initial_papers: list[PaperNode],
+        layers: int,
+        question: str,
+    ) -> list[PaperNode]:
+        """PaSa 风格 BFS 引文扩展（纯 SerpAPI + ar5iv）"""
         papers_queue: list[PaperNode] = list(initial_papers)
         all_papers: list[PaperNode] = list(initial_papers)
         visited_ids: set[str] = {p.dedup_key for p in papers_queue if p.paper_id}
 
         for depth in range(1, layers + 1):
-            logger.info("BFS 扩展 depth=%d，当前队列 %d 篇", depth, len(papers_queue))
+            logger.info("[Stage 2] BFS depth=%d，当前队列 %d 篇", depth, len(papers_queue))
+            t_depth = time.time()
 
             # 取 top N 按 score 排序的论文扩展
             batch = sorted(papers_queue, key=lambda p: p.select_score, reverse=True)[: self.expand_papers_count]
+            logger.info("[Stage 2] depth=%d 扩展 top %d 篇（batch size=%d）", depth, self.expand_papers_count, len(batch))
 
-            # 对 batch 每篇论文查引文
-            next_batch: list[PaperNode] = []
-            refs_nodes = self._fetch_refs_batch(batch)
+            # 批量获取所有 batch 论文的 bibliography
+            batch_bibs = self._fetch_bibliographies_batch(batch)
 
-            for parent, refs in zip(batch, refs_nodes):
-                for ref_node in refs:
-                    key = ref_node.dedup_key
-                    if key and key not in visited_ids:
-                        ref_node.depth = depth
-                        ref_node.source = f"Expand[{parent.title[:30]}][{parent.dedup_key}]"
-                        next_batch.append(ref_node)
-                        visited_ids.add(key)
-                        all_papers.append(ref_node)
+            # 收集所有待打分的 ref 论文
+            ref_candidates: list[tuple[PaperNode, str, str]] = []  # (parent, ref_arxiv_id, ref_title)
 
-            papers_queue = next_batch
-            if not papers_queue:
+            for parent, bibs in zip(batch, batch_bibs):
+                for bib_title in bibs:
+                    if not bib_title.strip():
+                        continue
+                    # SerpAPI 搜索 ref 标题 → 获取 arXiv ID
+                    ref_aids = self._resolve_ref_by_title(bib_title)
+                    for ref_aid in ref_aids:
+                        if ref_aid and ref_aid not in visited_ids:
+                            ref_candidates.append((parent, ref_aid, bib_title))
+                            visited_ids.add(ref_aid)
+
+            logger.info("[Stage 2] depth=%d 共发现 %d 个 ref candidate（去重后）", depth, len(ref_candidates))
+
+            if not ref_candidates:
+                logger.info("[Stage 2] depth=%d 无新 ref，停止扩展", depth)
                 break
+
+            # 批量抓取 ref 论文的 abstract（多线程）
+            ref_arxiv_ids = list({aid for _, aid, _ in ref_candidates})
+            abstracts = self._fetch_ar5iv_abstracts(ref_arxiv_ids, {})
+
+            # 构造成 PaperNode
+            ref_nodes: list[PaperNode] = []
+            for parent, ref_aid, bib_title in ref_candidates:
+                abstract = abstracts.get(ref_aid, "")
+                if not abstract:
+                    # Fallback: 用 bibliography title 作为 abstract
+                    abstract = bib_title
+                ref_nodes.append(PaperNode(
+                    title=bib_title,
+                    paper_id=ref_aid,
+                    abstract=abstract,
+                    depth=depth,
+                    select_score=0.0,
+                    source=f"ar5iv.Ref[{parent.title[:30]}]",
+                ))
+
+            # reranker 打分 + threshold 过滤
+            scored_refs = self._rerank_papers(question, ref_nodes)
+            logger.info(
+                "[Stage 2] depth=%d reranker 过滤后: %d/%d refs（threshold=%.2f，耗时 %.1fs）",
+                depth, len(scored_refs), len(ref_nodes), self.score_threshold, time.time() - t_depth,
+            )
+
+            if not scored_refs:
+                break
+
+            # 下一层队列 = 过滤通过的 refs
+            papers_queue = scored_refs
+            all_papers.extend(scored_refs)
 
         return all_papers
 
-    def _fetch_refs_batch(self, batch: list[PaperNode]) -> list[list[PaperNode]]:
-        """并行获取一批论文的参考文献列表"""
-        results: list[list[PaperNode]] = []
+    def _fetch_bibliographies_batch(
+        self,
+        papers: list[PaperNode],
+    ) -> list[list[str]]:
+        """并行获取一批论文的 bibliography（通过 ar5iv）"""
+        results: list[list[str]] = []
 
         with ThreadPoolExecutor(max_workers=self.threads_num) as pool:
-            futures = {pool.submit(self._fetch_refs, p): p for p in batch}
+            futures = {pool.submit(self._fetch_bibliography, p): p for p in papers}
             for future in as_completed(futures):
                 try:
                     results.append(future.result())
                 except Exception as e:
-                    logger.warning("获取参考文献失败: %s", e)
+                    logger.warning("获取 bibliography 失败: %s", e)
                     results.append([])
 
         return results
 
-    def _fetch_refs(self, paper: PaperNode) -> list[PaperNode]:
-        """获取单篇论文的参考文献节点
+    def _fetch_bibliography(self, paper: PaperNode) -> list[str]:
+        """获取单篇论文的参考文献标题列表（使用健壮的 BeautifulSoup 解析）
 
-        实现策略（按优先级）:
-        0. ar5iv.org — 抓取 HTML 全文，解析 \\cite{} 引用（PaSa 架构，最优先）
-        1. Semantic Scholar API — 真实引文关系图（降级）
-        2. arXiv 文本搜索 — 标题 + "related work citations"（最后降级）
+        使用 ar5iv HTML 解析 bibliography，返回每条参考文献的标题。
+
+        Returns:
+            list of ref titles（最多取前 15 条）
         """
-        import re as re_module
-        paper_id = paper.paper_id or ""
+        paper_id = paper.paper_id
+        if not paper_id:
+            return []
 
-        # ── 策略 0：ar5iv HTML 解析引用（PaSa 架构，最优先）────────
-        if paper_id:
-            raw_id = _extract_arxiv_id(paper.paper_id) if paper.paper_id else ""
-            if raw_id:
-                try:
-                    from src.retrievers import Ar5ivRetriever
-                    with Ar5ivRetriever() as ar5iv:
-                        html = ar5iv.fetch_full_text(raw_id)
+        raw_id = _extract_arxiv_id(paper_id)
+        if not raw_id:
+            return []
 
-                    if html:
-                        # 解析 ar5iv HTML 中的参考文献条目
-                        # ar5iv 使用 <li id="bib.bib{N}"> 格式，每个条目包含作者、年份、标题
-                        bib_items = re_module.findall(
-                            r'<li id="bib\.bib(\d+)" class="ltx_bibitem">(.*?)</li>',
-                            html, re_module.DOTALL
-                        )
-
-                        ref_titles: list[str] = []
-                        for bid, content_block in bib_items[:15]:
-                            # 提取标题：第二个 ltx_bibblock（第一个是作者行）
-                            blocks = re_module.findall(
-                                r'class="ltx_bibblock">(.*?)<', content_block, re_module.DOTALL
-                            )
-                            if len(blocks) > 1:
-                                title = re_module.sub(r'<[^>]+>', '', blocks[1]).strip()
-                                if title:
-                                    ref_titles.append(title)
-
-                        if ref_titles:
-                            nodes = self._fetch_refs_by_titles(ref_titles, paper)
-                            if nodes:
-                                logger.debug(
-                                    "论文 '%s' 借 ar5iv 解析 %d 篇参考文献",
-                                    paper.title[:30], len(nodes),
-                                )
-                                time.sleep(0.5)
-                                return nodes
-                except Exception as e:
-                    logger.debug("ar5iv 解析失败 [%s]: %s，回退 S2", paper.title[:30], e)
-
-        # ── 策略 1：Semantic Scholar 真实引文图 ──────────────────
-        if paper_id:
-            raw_id = _extract_arxiv_id(paper.paper_id) if paper.paper_id else ""
-            s2_id = f"ArXiv:{raw_id}" if raw_id and not raw_id.startswith("ArXiv:") else raw_id
-            try:
-                from src.retrievers import SemanticScholarRetriever
-
-                with SemanticScholarRetriever() as s2:
-                    refs = s2.get_references(s2_id, max_results=10)
-                if refs:
-                    nodes = []
-                    for r in refs:
-                        ref_arxiv = _extract_arxiv_id(r.url)
-                        node = PaperNode(
-                            title=r.title,
-                            paper_id=ref_arxiv or r.url or r.title,
-                            abstract=r.abstract or "",
-                            depth=paper.depth + 1,
-                            select_score=0.0,
-                            source=f"Ref: [{paper.title[:30]}]",
-                        )
-                        nodes.append(node)
-                    logger.debug(
-                        "论文 '%s' 借 S2 获取 %d 篇参考文献",
-                        paper.title[:30], len(nodes),
-                    )
-                    return nodes
-            except Exception as e:
-                logger.debug(
-                    "S2 引文查找失败 [%s]: %s，回退文本搜索", paper.title[:30], e
-                )
-
-        # ── 策略 2：降级文本搜索 ─────────────────────────────────
         try:
-            from src.retrievers import ArxivRetriever
-
-            with ArxivRetriever() as retriever:
-                related = retriever.search(
-                    f"{paper.title} related work citations",
-                    max_results=10,
-                )
+            with Ar5ivRetriever() as ar5iv:
+                bibs = ar5iv.extract_bibliography(ar5iv.fetch_full_text(raw_id))
+            titles = [b["title"] for b in bibs[:15] if b.get("title")]
+            logger.debug(
+                "paper %r ar5iv bibliography: %d refs (最多取15)",
+                paper.title[:30], len(titles),
+            )
+            time.sleep(0.3)  # 礼貌限速
+            return titles
         except Exception as e:
-            logger.debug("论文 '%s' 参考文献搜索失败: %s", paper.title[:30], e)
+            logger.debug("ar5iv bibliography fetch failed [%s]: %s", paper.title[:30], e)
             return []
 
-        if not related:
+    def _resolve_ref_by_title(self, title: str) -> list[str]:
+        """用 SerpAPI Google 搜索论文标题，获取 arXiv ID 列表
+
+        PaSa Stage 2 核心：用标题找 arXiv ID，避免依赖 S2 API。
+        """
+        try:
+            with SerpAPIRetriever() as serp:
+                papers = serp.search_ref_by_title(title, max_results=3)
+
+            aids = []
+            for p in papers:
+                m = re.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
+                if m:
+                    aids.append(m.group(1))
+
+            if aids:
+                logger.debug("resolve_ref_by_title('%s') → %s", title[:50], aids[:2])
+            else:
+                logger.debug("resolve_ref_by_title('%s') → 无 arXiv ID", title[:50])
+            return aids
+
+        except Exception as e:
+            logger.debug("SerpAPI title search failed [%s]: %s", title[:50], e)
             return []
-
-        if self.reranker:
-            nodes = self._score_refs_by_reranker(paper, related)
-        elif self.embed:
-            nodes = self._score_refs_by_embedding(paper, related)
-        else:
-            # Fallback: no reranker/embed → return all with default score
-            nodes: list[PaperNode] = []
-            for r in related:
-                ref_arxiv = _extract_arxiv_id(r.url)
-                nodes.append(PaperNode(
-                    title=r.title,
-                    paper_id=ref_arxiv or r.url or r.title,
-                    abstract=r.abstract or "",
-                    depth=paper.depth + 1,
-                    select_score=paper.select_score * 0.9,
-                    source=f"Ref: [{paper.title[:30]}]",
-                ))
-
-        time.sleep(3)
-        return nodes
-
-
-    def _fetch_refs_by_titles(
-        self, ref_titles: list[str], parent: PaperNode
-    ) -> list[PaperNode]:
-        """根据论文标题列表，用 SerpAPI 搜索获取 arXiv ID，再获取详情"""
-        import re as re_module
-        import httpx
-        from src.retrievers import SerpAPIRetriever
-
-        nodes: list[PaperNode] = []
-        for title in ref_titles:
-            try:
-                with SerpAPIRetriever() as serp:
-                    papers = serp.search(f"{title} site:arxiv.org", max_results=1)
-
-                if not papers:
-                    continue
-
-                aid = None
-                for p in papers:
-                    m = re_module.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", p.url)
-                    if m:
-                        aid = m.group(1)
-                        break
-
-                if not aid:
-                    continue
-
-                resp = httpx.get(f"https://arxiv.org/abs/{aid}", timeout=15, follow_redirects=True)
-                if resp.status_code != 200:
-                    continue
-                html = resp.text
-                title_m = re_module.search(r"<title>\[[^\]]+\]\s*(.*?)</title>", html)
-                paper_title = title_m.group(1).strip() if title_m else title
-                abstract_m = re_module.search(
-                    r'class="abstract mathjax">(.*?)</blockquote>', html, re_module.DOTALL
-                )
-                abstract_raw = abstract_m.group(1) if abstract_m else ""
-                abstract_raw = re_module.sub(r"<span[^>]*>Abstract:</span>\s*", "", abstract_raw)
-                abstract = re_module.sub(r"<[^>]+>", "", abstract_raw).strip()
-                nodes.append(PaperNode(
-                    title=paper_title,
-                    paper_id=aid,
-                    abstract=abstract[:800],
-                    depth=parent.depth + 1,
-                    select_score=parent.select_score * 0.9,
-                    source=f"ar5iv Ref: [{parent.title[:30]}]",
-                ))
-                time.sleep(0.5)
-            except Exception as e:
-                logger.debug("引用扩展失败 [%s]: %s", title[:30], e)
-                continue
-        return nodes
-
-    def _score_refs_by_reranker(
-        self, paper: PaperNode, related: list[Any]
-    ) -> list[PaperNode]:
-        """用 reranker 打分参考文献"""
-        docs = [r.abstract or "" for r in related]
-        reranked = self.reranker.rerank(
-            query=paper.title,
-            documents=docs,
-            top_n=self.rerank_top_n,
-            return_documents=True,
-        )
-        paper_map = {i: r for i, r in enumerate(related)}
-        nodes: list[PaperNode] = []
-        for r in reranked:
-            result = paper_map.get(r.index)
-            if not result:
-                continue
-            ref_arxiv = _extract_arxiv_id(result.url)
-            nodes.append(PaperNode(
-                title=result.title,
-                paper_id=ref_arxiv or result.url or result.title,
-                abstract=result.abstract or "",
-                depth=paper.depth + 1,
-                select_score=r.relevance_score,
-                source=f"Ref: [{paper.title[:30]}]",
-            ))
-        return nodes
-
-    def _score_refs_by_embedding(
-        self, paper: PaperNode, related: list[Any]
-    ) -> list[PaperNode]:
-        """用 embedding cosine 相似度过滤参考文献"""
-        abstracts = [r.abstract or "" for r in related]
-        paper_vec = self.embed.encode(paper.title)
-        nodes: list[PaperNode] = []
-        for r, abstract_vec in zip(related, self.embed.encode_batch(abstracts)):
-            score = self._cosine(paper_vec, abstract_vec)
-            if score >= self.similarity_threshold:
-                ref_arxiv = _extract_arxiv_id(r.url)
-                nodes.append(PaperNode(
-                    title=r.title,
-                    paper_id=ref_arxiv or r.url or r.title,
-                    abstract=r.abstract or "",
-                    depth=paper.depth + 1,
-                    select_score=score,
-                    source=f"Ref: [{paper.title[:30]}]",
-                ))
-        return nodes
 
     # ── 工具方法 ──────────────────────────────────────────────
 
     @staticmethod
-    def _cosine(a: list[float], b: list[float]) -> float:
-        """计算两个向量的余弦相似度"""
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(y * y for y in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
-
-    @staticmethod
     def _deduplicate(papers: list[PaperNode]) -> list[PaperNode]:
-        """全局去重（按 dedup_key）"""
+        """全局去重（按 dedup_key），保留最高 score 的版本"""
         seen: dict[str, PaperNode] = {}
         for p in papers:
             key = p.dedup_key
             if key not in seen or p.select_score > seen[key].select_score:
                 seen[key] = p
         return list(seen.values())
-
-    # ── 上下文管理 ───────────────────────────────────────────
 
     def __enter__(self) -> "BFSSearcher":
         return self
@@ -697,19 +681,16 @@ def _extract_arxiv_id(url: str) -> str:
     支持格式:
       - https://arxiv.org/abs/2301.00001
       - https://arxiv.org/abs/2301.00001v2
-      - ArXiv:2501.08008 / arXiv:2411.04358v1（带前缀纯ID）
+      - ArXiv:2501.08008 / arXiv:2411.04358v1
       - 2301.00001 / 2501.08008（纯数字格式）
     """
     if not url:
         return ""
     import re
-    # 去除常见前缀标签（ArXiv: / arXiv: / arxiv:）
     cleaned = re.sub(r"^(arxiv|ArXiv|arXiv):", "", url).strip()
-    # 先尝试 URL 提取
     m = re.search(r"arxiv\.org/abs/([0-9]{4}\.[0-9]+)", cleaned)
     if m:
         return m.group(1)
-    # 纯数字 ID（如 "2501.08008" 或 "2411.04358v1"）
     m = re.match(r"^(\d{4}\.\d+)", cleaned)
     if m:
         return m.group(1)

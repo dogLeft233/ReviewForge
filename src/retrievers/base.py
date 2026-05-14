@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
+import os
 
 from src.config import settings
 from src.retrievers.exceptions import RateLimitError, AuthenticationError
@@ -28,9 +29,12 @@ class BaseRetriever(ABC):
     """数据源名称，须与 SOURCE_RATE_LIMITS 的 key 匹配"""
 
     def __init__(self) -> None:
+        proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
         self._client = httpx.Client(
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
+            proxy=proxy_url,
+            trust_env=False,  # 代理已通过 proxy 参数显式设置，关闭 trust_env 避免重复
         )
         # 使用全局单例限速器（进程级共享，所有同名 source 共用同一把锁）
         # 在 ThreadPoolExecutor 并发场景下，防止各自创建独立 RateLimiter 导致限流失效
@@ -81,6 +85,15 @@ class BaseRetriever(ABC):
             match resp.status_code:
                 case 200:
                     return resp
+                case 401 | 403:
+                    logger.error(
+                        "%s: auth error %d — token may be invalid or expired. resp=%s",
+                        self.name, resp.status_code, resp.text[:200],
+                    )
+                    raise httpx.HTTPStatusError(
+                        f"{self.name} auth failed({resp.status_code})",
+                        request=resp.request, response=resp,
+                    )
                 case 429:
                     logger.warning(
                         "%s: 429 rate limited, retry %d after %.1fs",

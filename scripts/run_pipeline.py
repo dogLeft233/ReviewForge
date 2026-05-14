@@ -18,7 +18,7 @@
     python run_pipeline.py --topic "LoRA" --resume-from tmp/LoRA/step2_searcher_done.json
 
     # 指定起始步骤（调试用）
-    python run_pipeline.py --topic "LoRA" --from-step searcher_done
+    python run_pipeline.py scripts/run_pipeline.py "LoRA" --from-step searcher_done
 
     # 指定 log 级别
     python run_pipeline.py --topic "LoRA" --log-level DEBUG
@@ -42,8 +42,8 @@ from src.core import CoreConfig, PipelineResult, ReviewForge
 
 # ── API Keys（开发调试用）───────────────────────────────────────────────────
 
-# 从环境变量读取，可传入 BOCHA_API_KEY / LLM_API_KEY 覆盖
-_API_KEY = os.environ.get("BOCHA_API_KEY", "sk-grnzvqmqpizcjwszwfuyirfhwocbopgwhcibkitmrpsoauye")
+# 优先级: LLM_API_KEY 环境变量 > BOCHA_API_KEY 环境变量 > config.json
+_API_KEY = None
 
 # ── 入口 ───────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,9 @@ def main() -> None:
     parser.add_argument(
         "--tmp-root", type=str, default=None, help="中间结果根目录（默认 src/../tmp）"
     )
+    parser.add_argument(
+        "--log-file", type=str, default=None, help="将输出写入指定日志文件（log/ 目录下）"
+    )
     args = parser.parse_args()
 
     # ── 日志配置 ────────────────────────────────────────────────────────────
@@ -106,6 +109,15 @@ def main() -> None:
         force=True,
     )
     logger = logging.getLogger("run_pipeline")
+
+    if args.log_file:
+        os.makedirs("log", exist_ok=True)
+        log_path = Path("log") / args.log_file
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setLevel(getattr(logging, args.log_level))
+        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)-8s] %(name)s: %(message)s", datefmt="%H:%M:%S"))
+        logger.addHandler(fh)
+        print(f"📝 日志写入: {log_path}")
 
     # ── 导入（延迟） ──────────────────────────────────────────────────────
 

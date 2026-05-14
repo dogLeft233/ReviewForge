@@ -1,0 +1,66 @@
+你是一个知识图谱构建专家。请从以下综述论文内容中抽取知识图谱关系。
+
+## 任务
+1. 分析论文之间的关系（引用、改进、竞争、互补）
+2. 提取方法之间的对比关系（从benchmark或文中描述）
+3. 识别技术演进脉络（哪些方法是在哪些基础上发展而来）
+4. 构建概念层次结构
+
+## 输入信息
+
+**主题**: {topic}
+
+**论文列表**:
+{papers_text}
+
+**方法列表**:
+{methods_text}
+
+**Benchmark结果**:
+{benchmarks_text}
+
+**正文内容（用于提取关系）**:
+{body_text}
+
+## 输出格式（严格JSON，不要输出其他内容）
+{{
+  "paper_relations": [
+    {{
+      "paper_a": "论文A标题",
+      "paper_b": "论文B标题",
+      "relation": "cites | improves_on | competes_with | complementary",
+      "evidence": "具体证据来自原文"
+    }}
+  ],
+  "method_comparisons": [
+    {{
+      "winner": "优胜方法",
+      "loser": "劣势方法",
+      "metric": "指标名称",
+      "delta": "差异值如+2.1%",
+      "evidence": "具体证据"
+    }}
+  ],
+  "evolution_chains": [
+    {{
+      "chain": ["方法1", "方法2", "方法3"],
+      "description": "演进描述"
+    }}
+  ],
+  "concept_hierarchy": [
+    {{
+      "concept": "上层概念",
+      "sub_concepts": ["子概念1", "子概念2"],
+      "parent": "更上层概念"
+    }}
+  ]
+}}
+
+## 关系类型说明
+- **cites**: A论文引用了B论文的方法或结论
+- **improves_on**: A论文在B论文基础上做了改进
+- **competes_with**: A和B解决同一问题但采用不同方法
+- **complementary**: A和B结合使用效果更好
+- **succeeds**: A方法是在B方法基础上演进而来
+
+请直接从输入内容中提取关系，不要编造。如果某类关系没有信息，请输出空列表。

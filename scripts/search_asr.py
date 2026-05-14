@@ -64,11 +64,11 @@ def build_searcher():
         llm=llm,
         embed=embed,
         reranker=reranker,
-        search_queries_count=25,
-        search_papers_count=30,
-        expand_papers_count=30,
-        expand_layers=3,
-        similarity_threshold=0.50,
+        search_queries_count=3,
+        search_papers_count=5,
+        expand_papers_count=5,
+        expand_layers=1,
+        score_threshold=0.20,
         rerank_top_n=100,
         threads_num=1,
     )
@@ -91,7 +91,7 @@ def main():
     print(f"  expand_papers_count : {searcher.expand_papers_count}")
     print(f"  expand_layers       : {searcher.expand_layers}")
     print(f"  rerank_top_n        : {searcher.rerank_top_n}")
-    print(f"  similarity_threshold: {searcher.similarity_threshold}")
+    print(f"  similarity_threshold: {searcher.score_threshold}")
     print(f"  threads_num         : {searcher.threads_num}")
 
     print(f"\n搜索问题:\n  {QUESTION}\n")

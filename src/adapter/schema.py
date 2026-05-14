@@ -31,6 +31,10 @@ EdgeRelation = Literal[
     "uses",
     "compares_with",
     "related_to",
+    "cites",
+    "competes_with",
+    "succeeds",
+    "complementary",
 ]
 
 
@@ -112,6 +116,44 @@ class GraphEdge(BaseModel):
 class KnowledgeGraph(BaseModel):
     nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[GraphEdge] = Field(default_factory=list)
+
+
+class PaperRelation(BaseModel):
+    """论文间关系"""
+    paper_a: str = ""
+    paper_b: str = ""
+    relation: str = ""  # cites | improves_on | competes_with | complementary
+    evidence: str = ""
+
+
+class MethodComparison(BaseModel):
+    """方法对比关系"""
+    winner: str = ""
+    loser: str = ""
+    metric: str = ""
+    delta: str = ""
+    evidence: str = ""
+
+
+class EvolutionChain(BaseModel):
+    """技术演进链"""
+    chain: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class ConceptHierarchy(BaseModel):
+    """概念层次结构"""
+    concept: str = ""
+    sub_concepts: list[str] = Field(default_factory=list)
+    parent: str = ""
+
+
+class GraphRelations(BaseModel):
+    """从WriterReport中抽取的知识图谱关系（供后续图谱构建使用）"""
+    paper_relations: list[PaperRelation] = Field(default_factory=list)
+    method_comparisons: list[MethodComparison] = Field(default_factory=list)
+    evolution_chains: list[EvolutionChain] = Field(default_factory=list)
+    concept_hierarchy: list[ConceptHierarchy] = Field(default_factory=list)
 
 
 class ResearchTask(BaseModel):

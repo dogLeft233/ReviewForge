@@ -48,35 +48,39 @@ class ExplorerAgent:
     max_chars_per_fetch: int = 4000
 
     def run(self, topic: str) -> ExplorerReport:
-        """执行完整三阶段探索（三阶段并发运行）"""
+        """执行完整三阶段探索：Stage1 先执行 → Stage2 & 3 并行执行"""
         report = ExplorerReport(topic=topic)
 
-        with ThreadPoolExecutor(max_workers=self.llm._cfg.max_concurrency) as pool:
-            f1 = pool.submit(self._run_stage1, topic)
-            f2 = pool.submit(self._run_stage2, topic)
-            f3 = pool.submit(self._run_stage3, topic)
-
-            stage1_result = f1.result()
-            stage2_result = f2.result()
-            stage3_result = f3.result()
+        # Stage 1 先执行（串行）
+        logger.info("[Explorer] Stage 1: 领域概况")
+        stage1_result = self._run_stage1(topic)
 
         report.stage1_overview = stage1_result["overview"]
         report.stage1_concepts = stage1_result["concepts"]
         report.stage1_search_results = stage1_result["raw"]
+        report.total_queries = stage1_result["query_count"]
+
+        # Stage 2 & 3 并行执行（Stage 3 依赖 Stage 2 结果）
+        logger.info("[Explorer] Stage 2 & 3 并行执行（max concurrency=%d）", self.llm._cfg.max_concurrency)
+        with ThreadPoolExecutor(max_workers=self.llm._cfg.max_concurrency) as pool:
+            f2 = pool.submit(self._run_stage2, topic, stage1_result)
+            f3 = pool.submit(self._run_stage3, topic, stage1_result)
+
+            stage2_result = f2.result()
+            stage3_result = f3.result()
+
         report.stage2_classics = stage2_result["classics"]
         report.stage2_timeline = stage2_result["timeline"]
         report.stage2_search_results = stage2_result["raw"]
+        report.total_queries += stage2_result["query_count"]
+
         report.stage3_benchmarks = stage3_result["benchmarks"]
         report.stage3_state_of_art = stage3_result["sota"]
         report.stage3_trends = stage3_result["trends"]
         report.stage3_search_results = stage3_result["raw"]
-        report.total_queries = (
-            stage1_result["query_count"]
-            + stage2_result["query_count"]
-            + stage3_result["query_count"]
-        )
+        report.total_queries += stage3_result["query_count"]
 
-        logger.info("[Synthesis] 生成下游报告")
+        logger.info("[Explorer] 生成下游报告")
         report.downstream_report = self._synthesize(topic, report)
 
         logger.info("Explorer 完成！共执行 %d 次搜索", report.total_queries)
@@ -100,6 +104,7 @@ class ExplorerAgent:
             messages=messages,
             temperature=0.3,
             max_tokens=1000,
+            thinking=1,
         )
 
         # 用 src.llm 的 web_search 补充
@@ -114,6 +119,7 @@ class ExplorerAgent:
             messages=synthesis_messages,
             temperature=0.2,
             max_tokens=800,
+            thinking=1,
         )
 
         concepts = self._extract_concepts(final_reply)
@@ -129,7 +135,19 @@ class ExplorerAgent:
     # Stage 2
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_stage2(self, topic: str) -> dict[str, Any]:
+    def _run_stage2(self, topic: str, stage1_result: dict | None = None) -> dict[str, Any]:
+        """Stage 2: 查找经典论文，注入 Stage 1 结果作为 context"""
+        # 构建外部 prompt（含 stage1 context）
+        external_parts = ["你是一名学术研究员，擅长搜索和分析。"]
+        if stage1_result:
+            overview = stage1_result.get("overview", "")[:500]
+            concepts = ", ".join(stage1_result.get("concepts", [])[:8])
+            if overview:
+                external_parts.append(f"\n## 领域背景（Stage 1）\n{overview}")
+            if concepts:
+                external_parts.append(f"\n## 核心概念\n{concepts}")
+        external_prompt = "\n".join(external_parts)
+
         system = _load_prompt("stage2_system.txt").format(topic=topic)
         user = _load_prompt("stage2_user.txt").format(topic=topic)
 
@@ -139,10 +157,11 @@ class ExplorerAgent:
         ]
 
         reply = self.llm.chat(
-            external_prompt="你是一名学术研究员，擅长搜索和分析。",
+            external_prompt=external_prompt,
             messages=messages,
             temperature=0.3,
             max_tokens=1200,
+            thinking=1,
         )
 
         search_results, qcount = self._do_search(topic, "classics")
@@ -157,6 +176,7 @@ class ExplorerAgent:
             messages=synthesis_messages,
             temperature=0.2,
             max_tokens=1000,
+            thinking=1,
         )
 
         classics = self._parse_classics(final_reply)
@@ -173,8 +193,26 @@ class ExplorerAgent:
     # Stage 3
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_stage3(self, topic: str) -> dict[str, Any]:
+    def _run_stage3(self, topic: str, stage1_result: dict | None = None, stage2_result: dict | None = None) -> dict[str, Any]:
+        """Stage 3: 梳理 Benchmark，注入 Stage 1&2 结果作为 context"""
         from src.explorer.explorer_report import BenchmarkEntry
+
+        # 构建外部 prompt（含 stage1/stage2 context）
+        external_parts = ["你是一名学术研究员，擅长搜索和分析。"]
+        if stage1_result:
+            overview = stage1_result.get("overview", "")[:300]
+            if overview:
+                external_parts.append(f"\n## 领域背景（Stage 1）\n{overview}")
+        if stage2_result:
+            classics = stage2_result.get("classics", [])
+            if classics:
+                classic_titles = [c.title for c in classics[:5] if hasattr(c, 'title')]
+                if classic_titles:
+                    external_parts.append(f"\n## 经典论文（Stage 2）\n" + "\n".join(f"- {t}" for t in classic_titles))
+            timeline = stage2_result.get("timeline", "")[:300]
+            if timeline:
+                external_parts.append(f"\n## 时间线\n{timeline}")
+        external_prompt = "\n".join(external_parts)
 
         system = _load_prompt("stage3_system.txt").format(topic=topic)
         user = _load_prompt("stage3_user.txt").format(topic=topic)
@@ -185,10 +223,11 @@ class ExplorerAgent:
         ]
 
         reply = self.llm.chat(
-            external_prompt="你是一名学术研究员，擅长搜索和分析。",
+            external_prompt=external_prompt,
             messages=messages,
             temperature=0.3,
             max_tokens=1200,
+            thinking=1,
         )
 
         search_results, qcount = self._do_search(topic, "benchmarks")
@@ -203,6 +242,7 @@ class ExplorerAgent:
             messages=synthesis_messages,
             temperature=0.2,
             max_tokens=1000,
+            thinking=1,
         )
 
         benchmarks = self._parse_benchmarks(final_reply)

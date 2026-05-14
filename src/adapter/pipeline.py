@@ -20,7 +20,13 @@ logger = logging.getLogger(__name__)
 
 def convert(raw: dict[str, Any]) -> VisualizationData:
     """规则化转换，不调 LLM。"""
-    viz = writer_json_to_visualization(raw)
+    # 提取 writer_report 中的 graph_relations
+    graph_relations = ""
+    writer_report = raw.get("writer_report")
+    if isinstance(writer_report, dict):
+        graph_relations = writer_report.get("graph_relations", "") or ""
+
+    viz = writer_json_to_visualization(raw, graph_relations=graph_relations)
     logger.info("[adapter] quality=%s", assess_visualization_data(viz))
     return viz
 
@@ -30,7 +36,13 @@ def convert_with_llm(
     llm: Any | None = None,
 ) -> VisualizationData:
     """先跑脚本转换，再过一遍 LLM refiner。LLM 不可用时静默退回脚本结果。"""
-    viz = writer_json_to_visualization(raw)
+    # 提取 writer_report 中的 graph_relations
+    graph_relations = ""
+    writer_report = raw.get("writer_report")
+    if isinstance(writer_report, dict):
+        graph_relations = writer_report.get("graph_relations", "") or ""
+
+    viz = writer_json_to_visualization(raw, graph_relations=graph_relations)
     logger.info("[adapter] script quality=%s", assess_visualization_data(viz))
 
     if llm is None:

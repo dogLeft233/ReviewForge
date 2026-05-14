@@ -44,7 +44,7 @@ class SerperRetriever(BaseRetriever):
 
     def __init__(self, api_key: str | None = None) -> None:
         super().__init__()
-        self._api_key = api_key or settings.serper_api_key
+        self._api_key = api_key or settings.serpapi_api_key or settings.serper_api_key
         self._limiter = get_source_limiter("serper")
 
     def search(self, query: str, max_results: int | None = None) -> list[PaperCard]:

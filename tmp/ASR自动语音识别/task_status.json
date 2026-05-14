@@ -1,0 +1,10 @@
+{
+  "task_id": "pipeline",
+  "topic": "ASR自动语音识别",
+  "status": "completed",
+  "stage": "complete",
+  "progress": 1.0,
+  "message": "🎉 完整流水线完成！总耗时 144.6s",
+  "total_time": 144.6472043991089,
+  "result_file": "tmp/ASR自动语音识别/step3_writer_done.json"
+}

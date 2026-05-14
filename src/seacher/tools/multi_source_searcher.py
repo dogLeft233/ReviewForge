@@ -112,8 +112,10 @@ def _search_github(query: str, max_results: int = 10) -> str:
     try:
         from src.retrievers import GithubRetriever
 
+        logger.debug("[github] search query=%s max=%d", query, max_results)
         with GithubRetriever() as gh:
             results = gh.search_resources(query, max_results=max_results)
+        logger.debug("[github] got %d results", len(results))
         if not results:
             return f"（GitHub 无结果: {query}）"
         lines = [f"## GitHub: {query}"]

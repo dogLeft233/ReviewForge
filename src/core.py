@@ -41,6 +41,7 @@ from src.llm import LLM, Message
 from src.seacher.bfs_search import BFSSearcher
 from src.seacher import MultiSourceSearcher, SearcherAgent
 from src.writer import WriterAgent, WriterConfig, WriterReport
+from src.adapter.openai_responses_enhancer import enhance_with_openai_responses
 
 logger = logging.getLogger(__name__)
 
@@ -63,17 +64,17 @@ class CoreConfig:
     verbose: bool = False
 
     # ── BFSSearcher 参数 ───────────────────────────────────────
-    bfs_expand_layers: int = 2
+    bfs_expand_layers: int = 1
     """BFS 最大层数（0=只用搜索，1=搜索+一层引文，2=两层）"""
-    bfs_expand_papers_count: int = 15
+    bfs_expand_papers_count: int = 20
     """BFS 每层最多扩展多少篇论文"""
-    bfs_search_queries_count: int = 5
+    bfs_search_queries_count: int = 10
     """BFSSearcher 每轮生成多少个搜索词"""
-    bfs_search_papers_count: int = 20
+    bfs_search_papers_count: int = 3
     """BFSSearcher 每个搜索词取多少篇论文"""
-    bfs_similarity_threshold: float = 0.50
+    bfs_similarity_threshold: float = 0.1
     """相似度过滤阈值"""
-    bfs_rerank_top_n: int = None
+    bfs_rerank_top_n: int = 100
     """重排序后保留前 n 条（None=全部）"""
     bfs_enabled: bool = True
     """启用 BFSSearcher 作为主检索（False 则退化为仅 MultiSourceSearcher）"""
@@ -163,14 +164,12 @@ def _serialize_pipeline_result(r: PipelineResult) -> dict[str, Any]:
         "searcher_result": r.searcher_result,
         "searcher_papers": [
             {
-                "paper_id": p.paper_id,
-                "title": p.title,
-                "authors": p.authors,
-                "year": p.year,
-                "venue": p.venue,
-                "abstract": p.abstract,
-                "cited_by": p.cited_by,
-                "select_score": p.select_score,
+                "paper_id": getattr(p, "paper_id", ""),
+                "title": getattr(p, "title", ""),
+                "abstract": getattr(p, "abstract", ""),
+                "depth": getattr(p, "depth", 0),
+                "source": getattr(p, "source", ""),
+                "select_score": getattr(p, "select_score", 0.0),
             }
             for p in r.searcher_papers
         ] if r.searcher_papers else [],
@@ -204,11 +203,9 @@ def _deserialize_pipeline_result(data: dict[str, Any]) -> PipelineResult:
             type("PaperNode", (), {
                 "paper_id": p.get("paper_id", ""),
                 "title": p.get("title", ""),
-                "authors": p.get("authors", []),
-                "year": p.get("year", 0),
-                "venue": p.get("venue", ""),
                 "abstract": p.get("abstract", ""),
-                "cited_by": p.get("cited_by", 0),
+                "depth": p.get("depth", 0),
+                "source": p.get("source", ""),
                 "select_score": p.get("select_score", 0.0),
             })()
             for p in data.get("searcher_papers", [])
@@ -363,7 +360,7 @@ class ReviewForge:
                 search_papers_count=self.config.bfs_search_papers_count,
                 expand_papers_count=self.config.bfs_expand_papers_count,
                 expand_layers=self.config.bfs_expand_layers,
-                similarity_threshold=self.config.bfs_similarity_threshold,
+                score_threshold=self.config.bfs_similarity_threshold,
                 rerank_top_n=self.config.bfs_rerank_top_n,
             )
         return self._bfs_searcher
@@ -428,48 +425,31 @@ class ReviewForge:
             self._save_result(result, tmp_dir, "step1_explorer_done.json")
             raise
 
-        # Step 2: Searcher
+        # Step 2: Searcher (BFSSearcher + MultiSourceSearcher 并行)
         try:
             logger.info("[Step 2/3] Searcher 开始检索: %s", topic)
             t0 = time.time()
-            messages: list[dict[str, str]] = []
-            search_text = ""
-            # 2a: SearcherAgent 生成搜索关键词（基于 Explorer 结果）
-            keywords_text = self.searcher.run_with_explorer_report(
-                topic, result.explorer_report
-            )
-            # 2b: BFSSearcher 为主检索，MultiSourceSearcher 为备用
-            papers: list = []
-            search_text = ""
-            if self.config.bfs_enabled:
-                try:
-                    logger.info(
-                        "[Step 2b] BFSSearcher 主检索 (layers=%d, expand_papers=%d)",
-                        self.config.bfs_expand_layers,
-                        self.config.bfs_expand_papers_count,
-                    )
-                    papers = self.bfs_searcher.search(topic)
-                    search_text = self._format_papers_for_writer(papers)
-                    logger.info(
-                        "[Step 2b] BFSSearcher 完成，获取 %d 篇论文",
-                        len(papers),
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "[Step 2b] BFSSearcher 失败，切换备用 MultiSourceSearcher: %s",
-                        e,
-                        exc_info=True,
-                    )
-                    papers = []
-                    search_text = ""
 
-            if not papers:
-                # 备用：MultiSourceSearcher
-                logger.info("[Step 2b] 使用 MultiSourceSearcher 备用检索")
-                search_text, messages = self.multi_searcher.run(
+            # BFSSearcher: 使用 explorer_report 生成更精准的查询
+            # MultiSourceSearcher: 补充搜索（去掉论文搜索）
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                bfs_future = pool.submit(
+                    self.bfs_searcher.search_with_explorer_report,
                     topic,
-                    messages=messages,
+                    result.explorer_report,
                 )
+                multi_future = pool.submit(
+                    self.multi_searcher.run,
+                    topic,
+                )
+
+                papers = bfs_future.result()
+                search_text, messages = multi_future.result()
+
+            search_text = self._format_papers_for_writer(papers)
+            logger.info("[Step 2] BFSSearcher 获取 %d 篇论文", len(papers))
 
             result.searcher_messages = messages
             result.searcher_result = search_text
@@ -503,6 +483,9 @@ class ReviewForge:
                 result.writer_elapsed_seconds,
             )
             self._write_visualization_json(result, tmp_dir)
+
+            # 可选：OpenAI Responses API 质量增强
+            self._run_adapter_enhance(result, tmp_dir)
         except Exception as e:
             logger.error("Writer 步骤失败: %s", e, exc_info=True)
             result.error = f"writer: {e}"
@@ -626,6 +609,9 @@ class ReviewForge:
             result.step = "complete"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
             self._write_visualization_json(result, tmp_dir)
+
+            # 可选：OpenAI Responses API 质量增强
+            self._run_adapter_enhance(result, tmp_dir)
         except Exception as e:
             result.error = f"writer: {e}"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
@@ -647,6 +633,9 @@ class ReviewForge:
             result.step = "complete"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
             self._write_visualization_json(result, tmp_dir)
+
+            # 可选：OpenAI Responses API 质量增强
+            self._run_adapter_enhance(result, tmp_dir)
         except Exception as e:
             result.error = f"writer: {e}"
             self._save_result(result, tmp_dir, "step3_writer_done.json")
@@ -661,7 +650,8 @@ class ReviewForge:
         try:
             from src.adapter.script_adapter import writer_json_to_visualization
 
-            viz_data = writer_json_to_visualization(result._asdict())
+            from dataclasses import asdict
+            viz_data = writer_json_to_visualization(asdict(result))
             viz_path = tmp_dir / "visualization_data.json"
             with open(viz_path, "w", encoding="utf-8") as f:
                 json.dump(viz_data.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
@@ -674,19 +664,14 @@ class ReviewForge:
         lines = []
         for i, p in enumerate(papers, 1):
             title = p.title or "Untitled"
-            authors = (
-                ", ".join(p.authors[:3]) + ("..." if len(p.authors) > 3 else "")
-                if p.authors else "Unknown"
-            )
-            year = p.year or "n.d."
-            venue = p.venue or ""
-            cited = f", cited_by={p.cited_by}" if p.cited_by else ""
+            paper_id = p.paper_id or ""
             score = f", score={p.select_score:.3f}" if p.select_score else ""
+            source = f", source={p.source}" if p.source else ""
+            depth = f", depth={p.depth}" if p.depth else ""
             abstract = p.abstract or ""
             lines.append(
                 f"### [{i}] {title}\n"
-                f"**Authors:** {authors} ({year})\n"
-                f"**Venue:** {venue}{cited}{score}\n\n"
+                f"**ID:** {paper_id}{depth}{source}{score}\n\n"
                 f"{abstract}\n"
             )
         return "\n\n".join(lines)
@@ -694,6 +679,103 @@ class ReviewForge:
     def _save_result(self, result: PipelineResult, tmp_dir: Path, filename: str) -> None:
         path = tmp_dir / filename
         result.save(path)
+
+    def _run_adapter_enhance(
+        self, result: PipelineResult, tmp_dir: Path
+    ) -> None:
+        """可选的 OpenAI Responses API 质量增强阶段"""
+        try:
+            from src.config import settings
+
+            cfg = settings.adapter_enhance
+            if not cfg:
+                logger.info("[adapter-enhance] not configured")
+                return
+            enabled = cfg.get("enabled", False) if isinstance(cfg, dict) else getattr(cfg, "enabled", False)
+            if not enabled:
+                logger.info("[adapter-enhance] disabled in config")
+                return
+            api_key = cfg.get("api_key", "") if isinstance(cfg, dict) else getattr(cfg, "api_key", "")
+            if not (api_key or "").strip():
+                logger.info("[adapter-enhance] no api_key in config, skipping")
+                return
+
+            # 读取刚生成的 visualization_data.json
+            viz_path = tmp_dir / "visualization_data.json"
+            if not viz_path.exists():
+                logger.warning("[adapter-enhance] visualization_data.json not found, skipping")
+                return
+
+            with open(viz_path, encoding="utf-8") as f:
+                viz_json = json.load(f)
+
+            # 构建 raw 字典（供 enhancer 使用）
+            raw: dict[str, Any] = {"topic": result.topic}
+            if result.explorer_report:
+                raw["explorer_report"] = result.explorer_report
+
+            # 将 settings 中的 adapter_enhance 写入临时 yaml 文件供 enhancer 读取
+            import tempfile, yaml as yaml_lib
+
+            adapter_cfg = cfg if isinstance(cfg, dict) else {
+                "enabled": getattr(cfg, "enabled", False),
+                "openai": {
+                    "api_key": getattr(cfg, "api_key", ""),
+                    "base_url": getattr(cfg, "base_url", "https://api.openai.com/v1"),
+                    "model": getattr(cfg, "model", "gpt-4o"),
+                    "timeout_seconds": getattr(cfg, "timeout_seconds", 120),
+                    "max_output_tokens": getattr(cfg, "max_output_tokens", 5000),
+                    "temperature": getattr(cfg, "temperature", 0.1),
+                },
+                "web_search": {
+                    "enabled": getattr(cfg, "web_search_enabled", True),
+                    "tool_type": getattr(cfg, "web_search_tool_type", "web_search_preview"),
+                },
+                "enhancement": {
+                    "max_raw_chars": getattr(cfg, "max_raw_chars", 12000),
+                    "max_viz_chars": getattr(cfg, "max_viz_chars", 20000),
+                    "allow_fact_field_updates": getattr(cfg, "allow_fact_field_updates", False),
+                },
+                "debug": {
+                    "enabled": getattr(cfg, "debug_enabled", False),
+                },
+            }
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as tmp:
+                yaml_lib.safe_dump(adapter_cfg, tmp, allow_unicode=True)
+                tmp_path = tmp.name
+
+            # 调用增强器
+            from src.visualizer.schema import VisualizationData
+
+            viz_data = VisualizationData(**viz_json)
+            enhanced = enhance_with_openai_responses(
+                viz_data,
+                raw,
+                config_path=tmp_path,
+                force=True,
+            )
+
+            # 删除临时配置文件
+            import os as os_mod
+            os_mod.unlink(tmp_path)
+
+            # 覆盖 visualization_data.json
+            with open(viz_path, "w", encoding="utf-8") as f:
+                json.dump(enhanced.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
+            logger.info("[adapter-enhance] done, enhanced visualization_data.json")
+
+            # 同时更新 step3_writer_done.json 中的 viz 数据
+            step3_path = tmp_dir / "step3_writer_done.json"
+            if step3_path.exists():
+                with open(step3_path, encoding="utf-8") as f:
+                    step3_data = json.load(f)
+                step3_data["visualization_data"] = enhanced.model_dump(mode="json")
+                with open(step3_path, "w", encoding="utf-8") as f:
+                    json.dump(step3_data, f, ensure_ascii=False, indent=2)
+
+        except Exception as exc:
+            logger.warning("[adapter-enhance] 增强失败（非致命）: %s", exc)
 
     def list_sessions(self) -> list[dict[str, Any]]:
         """列出所有已保存的 session（按主题）"""
