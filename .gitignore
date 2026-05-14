@@ -40,8 +40,12 @@ plan_fix.py
 docs/
 OVERVIEW.md
 .llm_cache/
--e 
 # ReviewForge local outputs
 tmp/*
 !tmp/ASR自动语音识别/
 !tmp/ASR自动语音识别/**
+
+# Local data
+data/
+log/
+test.json
