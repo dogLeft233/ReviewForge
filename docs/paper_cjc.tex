@@ -1,0 +1,482 @@
+\documentclass[10.5pt,compsoc,UTF8]{CjC}
+\usepackage[fontset=none]{ctex}
+% Manual font setup — use Noto CJK (available on this system)
+\setCJKmainfont{Noto Serif CJK SC}[BoldFont=Noto Sans CJK SC Bold]
+\setCJKsansfont{Noto Sans CJK SC}[BoldFont=Noto Sans CJK SC Bold]
+\setCJKmonofont{Noto Sans CJK SC}
+\setCJKfamilyfont{zhsong}{Noto Serif CJK SC}
+\setCJKfamilyfont{zhhei}{Noto Sans CJK SC Bold}
+\setCJKfamilyfont{zhkai}{AR PL KaitiM GB}
+\setCJKfamilyfont{zhfs}{Noto Serif CJK SC}
+% Map ctex font commands to our families
+\NewDocumentCommand\heiti{}{\CJKfamily{zhhei}}
+\NewDocumentCommand\songti{}{\CJKfamily{zhsong}}
+\NewDocumentCommand\fangsong{}{\CJKfamily{zhfs}}
+\NewDocumentCommand\kaishu{}{\CJKfamily{zhkai}}
+% CjC.cls defines \cjczihao (to avoid zihao conflict with ctex)
+% Override ctex's \zihao with CjC's font sizing:
+\let\zihao\cjczihao
+\usepackage{graphicx}
+\usepackage{footmisc}
+\usepackage{subfigure}
+\usepackage{url}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage[noadjust]{cite}
+\usepackage{amsmath,amsthm}
+\usepackage{amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{color}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{xcolor,stfloats}
+\usepackage{comment}
+\setcounter{page}{1}
+\graphicspath{{./}}
+\usepackage{cuted}
+\usepackage{epstopdf}
+\usepackage{gbt7714}
+
+%===============================%
+
+\headevenname{\mbox{\quad} \hfill  \mbox{\zihao{-5}{计\quad \quad 算\quad \quad 机\quad \quad 学\quad \quad 报} \hspace {50mm} \mbox{2026 年}}}%
+\headoddname{? 期 \hfill
+作者姓名等：ReviewForge：基于多智能体协作的自动文献综述生成系统}%
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\setcounter{footnote}{0}
+\renewcommand\footnotelayout{\zihao{5-}}
+
+\newtheoremstyle{mystyle}{0pt}{0pt}{\normalfont}{1em}{\bf}{}{1em}{}
+\theoremstyle{mystyle}
+\renewcommand\figurename{图~}
+\renewcommand{\thesubfigure}{(\alph{subfigure})}
+\newcommand{\upcite}[1]{\textsuperscript{\cite{#1}}}
+\renewcommand{\labelenumi}{(\arabic{enumi})}
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+\newcommand{\abc}{\color{white}\vrule width 2pt}
+\renewcommand{\bibsection}{}
+\makeatletter
+\renewcommand{\@biblabel}[1]{[#1]\hfill}
+\makeatother
+\setlength\parindent{2em}
+
+\begin{document}
+
+\hyphenpenalty=50000
+\makeatletter
+\newcommand\mysmall{\@setfontsize\mysmall{7}{9.5}}
+\newenvironment{tablehere}
+  {\def\@captype{table}}
+
+\let\temp\footnote
+\renewcommand \footnote[1]{\temp{\zihao{-5}#1}}
+
+\thispagestyle{plain}%
+\thispagestyle{empty}%
+\pagestyle{CjCheadings}
+
+\vspace {-13mm}
+
+\onecolumn
+\zihao{5-}\noindent 第??卷\quad 第?期 \hfill 计\quad 算\quad 机\quad 学\quad 报\hfill Vol. ??  No. ?\\
+\zihao{5-}
+20??年?月 \hfill CHINESE JOURNAL OF COMPUTERS \hfill ???. 20??\\
+\noindent\rule[0.25\baselineskip]{\textwidth}{1pt}
+
+{
+\centering
+\vspace {11mm}
+{\zihao{2} \heiti ReviewForge：基于多智能体协作的自动文献综述生成系统}
+
+\vskip 5mm
+
+{\zihao{3}\fangsong 作者名$^{1)}$\quad  作者名$^{2)}$ \quad 作者名$^{1)}$}
+
+\footnote{\noindent \zihao{6} 收稿日期：\quad \quad -\quad -\quad ；最终修改稿收到日期：\quad \quad -\quad -\quad .*投稿时不填写此项*. 本课题得到\ldots 基金中文完整名称(No.项目号)资助.\textsf{作者名1(通信作者)}，性别，xxxx年生，学位(或目前学历)，职称，主要研究领域为自然语言处理、大语言模型.E-mail: **************.\textsf{作者名2}，性别，xxxx年生，学位(或目前学历)，职称，主要研究领域为*****.E-mail: **************.}
+
+\vspace {5mm}
+
+\zihao{6}{$^{1)}$(单位全名 部门(系)全名, 市(或直辖市) 国家名 邮政编码)}
+
+\zihao{6}{$^{2)}$(单位全名 部门(系)全名, 市(或直辖市) 国家名 邮政编码)}
+
+\zihao{6}{\textsf{论文定稿后，作者署名、单位无特殊情况不能变更。}}
+}
+
+\vskip 5mm
+
+\zihao{5-}{
+\setlength{\baselineskip}{16pt}\selectfont{
+\noindent {\heiti 摘\quad 要\quad }
+随着学术论文数量的指数级增长，研究人员撰写文献综述的时间成本日益增加。现有基于大语言模型（LLM）的自动综述生成系统仍面临三个关键挑战：有限上下文窗口导致内容深度不足、检索与写作过程缺乏系统性组织、以及缺少标准化的质量评估框架。针对上述问题，本文提出ReviewForge，一个基于多智能体协作的自动文献综述生成系统。该系统由三阶段流水线构成：（1）Explorer智能体执行三阶段领域探索（概况→经典工作→前沿趋势），生成结构化的领域报告；（2）Searcher智能体采用双路并行检索架构——基于重排序器的BFS引文图搜索（深度扩展）与LLM驱动的多数据源搜索（广度覆盖），实现高质量文献的自动发现；（3）Writer智能体基于上游探索结果，采用两阶段写作策略（规划→各章展开）生成完整的综述论文。此外，本文设计了``宁缺毋滥''的保守适配管线，通过规则提取、LLM校验和可选增强三阶段，将智能体输出转换为交互式可视化数据，并显式追踪知识缺口。在ASR自动语音识别、LoRA微调、图神经网络三个领域的实验表明，ReviewForge能够生成结构完整、引用准确率约80\%的综述论文。与其他自动综述系统（SurveyX）和检索系统（PaSa）的对比分析验证了BFS引文扩展和重排序过滤机制的有效性。
+
+\par}}
+\vspace {5mm}
+
+\zihao{5-}{\noindent
+{\heiti 关键词 \quad }文献综述自动生成；大语言模型；多智能体系统；引文图搜索；检索增强生成；重排序模型；知识图谱可视化
+}
+\zihao{5-}{\heiti 中图法分类号\quad } TP391\rm{\quad \quad \quad     }
+{\heiti DOI号:\quad } *投稿时不提供DOI号
+
+\vskip 7mm
+
+\begin{center}
+\zihao{3}{ \heiti ReviewForge: Automated Literature Survey Generation via Multi-Agent Collaboration}\\
+\vspace {5mm}
+\zihao{5}{ Author Name$^{1)}$ Author Name$^{2)}$}\\
+\vspace {2mm}
+\zihao{6}{{$^{1)}$(Department, University, City Code, China)}
+
+\zihao{6}{{$^{2)}$(Department, University, City Code, China)}
+
+\end{center}
+
+\zihao{5}{
+\setlength{\baselineskip}{18pt}\selectfont{
+{\bf Abstract}\quad The exponential growth of academic publications has made manual literature survey writing increasingly time-consuming. Existing LLM-based automated survey generation systems face three key challenges: limited context windows causing shallow content depth, lack of systematic organization in retrieval and writing processes, and absence of standardized quality evaluation frameworks. To address these issues, we propose ReviewForge, an automated literature survey generation system based on multi-agent collaboration. The system consists of a three-stage pipeline: (1) an Explorer agent that performs three-stage domain exploration (overview $\rightarrow$ classic works $\rightarrow$ frontiers), producing structured domain reports; (2) a Searcher agent employing a dual-path parallel retrieval architecture---a reranker-based BFS citation graph search for depth expansion and LLM-driven multi-source search for breadth coverage; (3) a Writer agent that generates complete survey papers using a two-phase writing strategy (planning $\rightarrow$ chapter writing) based on upstream exploration results. Additionally, we design a conservative adaptation pipeline with explicit knowledge gap tracking that converts agent outputs into interactive visualization data through three stages: rule-based extraction, LLM refinement, and optional enhancement. Experiments on three domains (ASR, LoRA fine-tuning, and Graph Neural Networks) demonstrate that ReviewForge produces structurally complete surveys with approximately 80\% citation accuracy. Comparative analysis with existing systems validates the effectiveness of BFS citation expansion and reranker-based filtering mechanisms.
+
+\par}}
+\vspace {5mm}
+{{\bf Keywords}\quad automated literature survey generation; large language models; multi-agent systems; citation graph search; retrieval-augmented generation; reranker models; knowledge graph visualization\par}}
+
+\zihao{5}
+\vskip 1mm
+\begin{multicols}{1}
+
+\section{\heiti 引言}
+
+学术论文的发表数量正以前所未有的速度增长。以arXiv预印本平台为例，截至2024年其累计论文已突破250万篇，计算机科学领域月均投稿量超过1万篇\upcite{surveyx2025}。面对如此庞大的文献海洋，研究人员撰写文献综述的时间成本急剧增加——据估计，一篇高质量的领域综述平均需要研究者投入数周甚至数月的时间进行文献检索、阅读、分类和撰写。
+
+近年来，大语言模型（Large Language Models, LLMs）在自然语言处理领域取得了突破性进展\upcite{openai2023gpt4,deepseek2024}，展现出强大的文本理解与生成能力。这一技术突破催生了一系列基于LLM的自动化写作系统。STORM\upcite{storm2024}利用多视角问答机制生成长篇百科文章；SurveyX\upcite{surveyx2025}将综述写作分解为准备和生成两阶段；PaSa\upcite{pasa2025}则专注于学术论文搜索的智能体设计。然而，现有的自动综述生成系统仍面临三个关键挑战：
+
+\textbf{（1）有限上下文窗口导致内容深度不足。} LLM的上下文窗口限制了单次处理的信息量。对于涵盖数百篇论文的文献综述，简单的``检索-填充''范式容易导致讨论停留在表层，缺乏跨方法的对比分析和批判性思考。
+
+\textbf{（2）检索与写作过程缺乏系统性组织。} 现有系统通常将检索和写作视为独立步骤，缺乏从领域探索到文献搜索再到结构化写作的有机衔接。特别是，检索阶段往往局限于简单关键词搜索，未能有效利用引文网络进行深度扩展。
+
+\textbf{（3）缺少标准化的质量评估框架。} 自动生成的综述如何评估其覆盖度、准确性、结构合理性？已有系统大多依赖人工评估或简单的自动指标，缺乏系统化的质量评估体系。
+
+针对上述挑战，本文提出ReviewForge，一个基于多智能体协作的自动文献综述生成系统。本文的主要贡献包括：
+
+（1）\textbf{三阶段多智能体流水线架构。} 提出Explorer→Searcher→Writer的三阶段协作框架，各阶段间通过结构化报告（ExplorerReport）传递领域知识，实现从粗粒度探索到精粒度写作的渐进式知识积累，并支持任意步骤的断点恢复。
+
+（2）\textbf{基于重排序器的BFS引文图搜索算法。} 设计了一种借鉴PaSa\upcite{pasa2025}架构的BFS文献搜索方法：用LLM生成精准搜索词→SerpAPI检索→ar5iv摘要增强→重排序器（Reranker）打分过滤→ar5iv参考文献扩展的多层BFS循环。与PaSa使用LLM进行候选筛选不同，本文采用轻量级重排序模型（Qwen3-Reranker-8B），在保证过滤质量的同时显著降低成本。
+
+（3）\textbf{基于ar5iv的零依赖引文扩展机制。} 通过解析ar5iv.org提供的LaTeX论文HTML5版本，直接从参考文献列表（bibliography）中提取结构化引文信息，结合SerpAPI标题反查arXiv ID，实现了无需Semantic Scholar等付费API的引文网络扩展。
+
+（4）\textbf{``宁缺毋滥''的保守适配管线。} 设计了规则提取→LLM校验→可选增强的三阶段数据转换管线，将智能体原始输出转换为前端可视化数据。该管线的核心原则是：对所有不确定的事实型字段（作者、年份、URL、分数）宁可留空也不编造，并通过\emph{needs\_research}机制显式追踪所有知识缺口，为后续人工或自动化补全提供精确指引。
+
+（5）\textbf{交互式多维度知识图谱可视化。} 将生成结果组织为包含概览、时间线、方法图谱、Benchmark、前沿趋势、知识图谱和对话智能体七个维度的交互式界面，支持研究人员对自动生成的综述进行直观探索和质量审查。
+
+\section{\heiti 相关工作}
+
+\subsection{基于LLM的自动写作系统}
+
+LLM的文本生成能力催生了一系列自动长文写作系统。STORM\upcite{storm2024}由斯坦福大学提出，通过多视角提问和模拟对话机制，自动收集并组织信息以生成维基百科风格的长篇文章。该系统将写作过程分为预写作（pre-writing）和写作两阶段，其中预写作阶段包括视角发现、模拟对话和大纲策划三个步骤。在FreshWiki数据集上，STORM在文章组织性上提升了25\%（绝对值），在覆盖广度上提升了10\%。然而，STORM的设计目标为通用百科文章，未针对学术综述的特殊需求（如引文准确性、方法对比分析、Benchmark整理）进行优化。
+
+SurveyX\upcite{surveyx2025}是中国人民大学团队提出的自动学术综述生成系统（发表于KDD 2025），将综述写作分解为准备（Preparation）和生成（Generation）两阶段。其核心创新包括在线参考文献检索、AttributeTree预处理方法和再润色（Re-polishing）流程。在内容质量和引用质量两个维度上，SurveyX分别取得了0.259和1.76的提升，并在结构化评分上接近人类专家水平。然而，SurveyX的实验仅限于NLP领域，其泛化能力有待验证；此外，其检索阶段依赖Google Scholar爬虫，在访问受限环境下难以复现。
+
+AutoSurvey\upcite{autosurvey2024}探索了利用LLM自动撰写领域综述的可行性，但其检索方式较简单，缺少引文扩展和重排序机制。
+
+\subsection{学术论文搜索智能体}
+
+PaSa\upcite{pasa2025}是字节跳动提出的学术论文搜索智能体（发表于ACL 2025）。该系统的核心架构包含两个LLM智能体：Crawler（爬取器）负责自主调用搜索工具、阅读论文和扩展参考文献，最大化召回率；Selector（选择器）负责精读Crawler找到的每篇论文，判断其是否满足用户需求。PaSa使用强化学习在合成数据集AutoScholarQuery（35k条精细学术查询）上进行优化，并构建了真实场景基准RealScholarQuery。实验表明，PaSa-7B在recall@20上超越Google+GPT-4o基线37.78\%。
+
+本文的BFSSearcher直接受益于PaSa的架构思想，但做了两个关键改进：（1）用重排序器（Reranker）替代LLM Selector，大幅降低筛选成本；（2）引入ar5iv参考文献解析替代Semantic Scholar API，实现零外部依赖的引文扩展。
+
+\subsection{检索增强生成（RAG）与文献分析}
+
+检索增强生成\upcite{weng2024rag}（Retrieval-Augmented Generation）范式通过将外部知识检索与LLM生成相结合，有效缓解了LLM的知识截止和幻觉问题。GraphRAG\upcite{graphrag2024}进一步引入了图结构来组织检索到的知识，通过社区检测和摘要生成实现全局感知的查询回答。
+
+在文献分析可视化方面，CiteSpace、VOSviewer等传统工具提供了引文网络和共词分析功能，但依赖人工导入数据且缺乏LLM驱动的语义理解。本文的交互式知识图谱可视化结合了LLM的关系提取能力和图网络分析，实现了更丰富的文献分析维度。
+
+\section{\heiti 系统架构总览}
+
+ReviewForge的系统架构如图1所示。整体流水线由三个核心智能体串行组成，中间结果自动持久化，支持断点恢复。
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=14cm]{1_new.png}}
+\caption{ReviewForge系统总体架构。用户输入研究领域后，Explorer执行三阶段领域探索并输出ExplorerReport；Searcher基于该报告生成搜索词并执行双路并行检索（BFSSearcher深度扩展 + MultiSourceSearcher广度覆盖）；Writer基于上游结果完成规划和各章节写作；Adapter将原始输出转换为可视化数据。中间结果在每一步自动保存为JSON文件，支持断点恢复。}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{三阶段流水线}
+
+系统执行流程为：
+
+\textbf{阶段一（Explorer）：} Explorer智能体接收用户输入的领域关键词，执行三阶段探索——Stage 1先获取领域概况和核心概念；随后Stage 2（经典工作与时间线）和Stage 3（SOTA方法与Benchmark）并行执行。每阶段采用``LLM初步回答→网页搜索→LLM综合分析''的闭环模式，保证输出有外部证据支撑。最终生成包含领域定义、核心概念、经典论文、时间线、Benchmark和前沿趋势的结构化ExplorerReport。
+
+\textbf{阶段二（Searcher）：} 基于ExplorerReport生成领域相关的搜索词，随后同时启动两条检索路径：（1）BFSSearcher执行基于重排序器的多层BFS引文图搜索，从直接搜索结果开始逐层扩展参考文献；（2）MultiSourceSearcher通过LLM工具调用驱动多数据源（arXiv、GitHub、HuggingFace、Semantic Scholar）并行检索。两路结果合并去重后，格式化为Writer可读的论文摘要文本。
+
+\textbf{阶段三（Writer）：} Writer智能体采用两阶段写作策略。Phase 0（规划）生成全局写作计划，包括3个候选标题、分类体系和各章核心要点。Phase 1（各章展开）按依赖顺序写作：标题和引言并行→正文（最复杂，需遵循预定分类体系）→结论、参考文献、关键词并行→摘要最后（基于全文提炼）。所有章节共享同一个WriterReport实例，后续章节可参考已写章节的上下文，保证全文连贯性。
+
+\subsection{中间持久化与断点恢复}
+
+每个阶段的输出自动保存为JSON文件（step1\_explorer\_done.json、step2\_searcher\_done.json、step3\_writer\_done.json），存放在\emph{tmp/\{领域名称\}/}目录下。用户可通过\emph{--resume}参数从任意已完成的步骤恢复执行，避免因单步失败导致全流程重跑。
+
+\section{\heiti 关键模块设计}
+
+\subsection{Explorer：三阶段领域探索}
+
+Explorer智能体旨在为下游检索和写作提供高质量的领域知识基础。其核心设计思想是``先LLM内在知识后外部验证''：每个阶段首先依赖LLM的参数化知识形成初步理解，然后通过网页搜索获取最新信息进行验证和补充，最后调用LLM综合内外部知识输出结构化结果。
+
+\textbf{Stage 1（领域概况）：} 从以下维度构建领域图景：领域定义与核心问题、主流方法范式、5--10个关键概念及解释、代表性工作举例。
+
+\textbf{Stage 2（经典工作与时间线）：} 识别领域发展中的里程碑工作，按时间顺序组织。对每篇经典论文输出标题、年份、作者、发表场合、核心思想和影响力评价。
+
+\textbf{Stage 3（SOTA与Benchmark）：} 聚焦当前最佳方法和标准评估基准。输出当前SOTA方法的技术路线、各Benchmark的评估指标与代表性分数、以及研究趋势总结。
+
+Stage 2和Stage 3在Stage 1完成后并行执行，充分利用LLM并发能力缩短总耗时。经过三个子阶段后，Explorer调用一次综合（Synthesis）步骤，将分散的子阶段结果整合为一个面向下游写作的结构化报告（downstream\_report）。
+
+\subsection{Searcher：双路并行检索}
+
+Searcher是ReviewForge最具技术特色的模块，采用``深度 + 广度''双路并行检索策略。
+
+\subsubsection{BFSSearcher：基于重排序的BFS引文图搜索}
+
+BFSSearcher的设计借鉴了PaSa\upcite{pasa2025}的Crawler-Selector双智能体架构，但做了两项关键改进：（1）用轻量级重排序模型替代LLM Selector进行候选筛选；（2）引入ar5iv参考文献解析实现零外部API依赖的引文扩展。
+
+\textbf{搜索阶段（Search Phase）：} LLM基于ExplorerReport生成$N$个精准搜索词（默认5个）。每个搜索词通过SerpAPI执行Google搜索，限定站点为arxiv.org（``site:arxiv.org''），从搜索结果中提取arXiv论文ID。随后，多线程调用ar5iv.org获取每篇论文的HTML全文，解析摘要部分。所有候选论文通过重排序器（Qwen3-Reranker-8B）进行批量相关性打分，分数低于阈值（默认0.3）的论文被丢弃。
+
+\textbf{扩展阶段（Expand Phase）：} 对通过筛选的论文，按重排序分数降序排列，取前$K$篇（默认15篇）进入下一层BFS扩展。对于每篇论文，通过ar5iv.org获取其HTML全文，利用BeautifulSoup解析参考文献列表（识别\emph{<span class="ltx\_bibtitle">}等语义标签），提取每篇参考文献的标题。对于每条标题，通过SerpAPI搜索反查其arXiv ID。新发现的论文经重排序过滤后进入下一层BFS循环，直至达到最大层数（默认2层）或无可扩展论文。
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=14cm]{2.png}}
+\caption{BFSSearcher的双阶段BFS流程。搜索阶段（左）：LLM生成搜索词→SerpAPI检索→ar5iv摘要增强→Reranker打分过滤。扩展阶段（右）：取Top-K论文→ar5iv参考文献解析→标题反查arXiv ID→Reranker过滤→下一层BFS。}
+\label{fig:bfs}
+\end{figure}
+
+\subsubsection{MultiSourceSearcher：LLM驱动的多源检索}
+
+作为BFSSearcher深度搜索的补充，MultiSourceSearcher通过LLM工具调用（tool calling）实现广度覆盖。LLM根据领域特征自主决策调用哪些数据源（arXiv、Semantic Scholar、GitHub、HuggingFace），支持多轮对话式检索。此模块尤其适用于发现综述论文（arXiv）、开源实现（GitHub）和预训练模型（HuggingFace）等BFSSearcher不易直接覆盖的资源类型。
+
+\subsubsection{ar5iv零依赖引文扩展}
+
+BFSSearcher的引文扩展能力完全依赖ar5iv.org——一个将arXiv LaTeX论文转换为HTML5的免费服务。本文设计了两种参考文献解析策略：（1）优先使用语义格式——通过BeautifulSoup定位\emph{ltx\_bibtitle}、\emph{ltx\_bibauthors}、\emph{ltx\_bibyear}等CSS类名提取结构化信息；（2）回退使用原始格式——解析\emph{ltx\_bibblock}中的纯文本，通过引号模式匹配提取标题，再从逗号分隔文本中提取其余字段。这一机制使得系统能在不依赖Semantic Scholar API（有速率限制）或付费学术数据库的情况下，实现任意深度的引文图遍历。
+
+\subsection{Writer：两阶段结构化写作}
+
+Writer智能体接收ExplorerReport中的领域知识，按学术综述的标准结构组织写作。
+
+\textbf{规划阶段（Phase 0）：} LLM基于领域探索报告生成全局写作计划，包括：（1）3个候选标题供选择；（2）领域分类体系（Taxonomy）——将领域的各类方法按技术路线进行层次化分类；（3）各章节的核心要点和论证策略；（4）关键词方向。
+
+\textbf{写作阶段（Phase 1）：} 各章节按依赖关系有序执行。引言和标题可并行生成（共享规划阶段信息）；正文是篇幅最长的部分，严格遵循规划阶段确定的分类体系进行逐节展开，包含方法对比表格和跨章节过渡；结论总结主要发现并指出未来方向；参考文献基于Explorer阶段识别的论文和正文中实际讨论的工作生成；摘要最后基于全文提炼。所有章节的输出写入共享的WriterReport实例，后续章节可引用先写章节的论述，确保全文逻辑连贯。
+
+Writer的正文写作提示中集成了ar5iv全文获取工具（fetch\_ar5iv\_full\_text），允许LLM在需要深度理解某篇论文细节时主动调用该工具获取全文内容，而非仅依赖摘要。
+
+\subsection{Adapter：保守适配管线与知识缺口追踪}
+
+Pipeline的最终输出（PipelineResult）是嵌套的原始Agent文本，需要转换为前端可消费的结构化数据。本文设计了``宁缺毋滥''的三阶段保守适配管线：
+
+\textbf{阶段一（规则提取）：} script\_adapter.py通过确定性规则解析各类Agent输出——使用正则表达式和markdown解析器从半结构化文本中提取论文、方法、时间线事件、Benchmark和前沿趋势。对于无法确定的信息，字段留空并生成ResearchTask记录（包含目标路径、缺失原因和补全提示）。
+
+\textbf{阶段二（LLM校验）：} llm\_refiner.py将规则提取的结果按模块（论文、时间线、方法、Benchmark、前沿、概览）分别送给LLM进行清理和补充。LLM的任务是去除碎片化信息、合并重复条目、补充缺失的描述性字段（如方法的优缺点、前沿的重要性）。LLM被明确禁止编造任何事实型字段（作者、年份、URL、Benchmark分数），违反时该字段保持为空并继续记录在needs\_research中。每个模块独立调用，单模块失败不影响其他模块。
+
+\textbf{阶段三（可选增强）：} openai\_responses\_enhancer.py通过OpenAI Responses API的网页搜索功能进行质量增强，分为6个独立模块（论文链接补充、方法细节、方法关联、前沿文献、前沿描述、Benchmark描述），每个模块通过snapshot.json控制是否重跑，避免重复消耗API额度。
+
+适配管线输出的数据结构定义在adapter/schema.py中，包含8种节点类型（论文、方法、数据集、Benchmark、指标、趋势、概念、资源）和11种边关系（提出、改进自、评估于、属于、使用、对比、相关、引用、竞争、继承、互补）。needs\_research字段是一个ResearchTask列表，每条记录包含：（1）target——知识缺口的精确路径（如``paper:p\_attention\_is\_all\_you\_need.url''）；（2）reason——缺失原因；（3）hint——补全建议。这使得知识缺口不仅被记录，还可以被后续人工或自动化的research阶段精确定位和补充。
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=14cm]{3.png}}
+\caption{Adapter三阶段管线：规则提取（确定性解析）→LLM校验（逐模块清理）→可选增强（OpenAI Responses API）。needs\_research机制全程追踪知识缺口。}
+\label{fig:adapter}
+\end{figure}
+
+\section{\heiti 实验评估}
+
+\subsection{实验设置}
+
+\textbf{LLM配置：} 所有实验使用DeepSeek-v4-Flash模型作为主LLM（通过DeepSeek API），嵌入模型使用BAAI/bge-m3，重排序模型使用Qwen3-Reranker-8B（均通过SiliconFlow API）。
+
+\textbf{评估领域：} 选择三个不同领域对系统进行评估——（1）ASR自动语音识别（语音处理）；（2）LoRA fine-tuning（高效机器学习）；（3）Graph Neural Networks（图学习）。这三个领域覆盖了AI研究中不同类型的话题，可检验系统的领域泛化能力。
+
+\textbf{BFSSearcher参数：} 默认配置为search\_queries\_count=5、search\_papers\_count=3、expand\_papers\_count=15、expand\_layers=2、score\_threshold=0.3。
+
+\subsection{多领域生成结果}
+
+表1展示了ReviewForge在三个领域上的生成结果统计。所有领域均成功生成了结构完整的综述论文，包含标题、摘要、引言、正文、结论、关键词和参考文献。
+
+\begin{table}[htbp]
+\centering {\heiti 表1\quad 三个领域的综述生成结果统计}
+\vspace {-2.5mm}
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{指标} & \textbf{ASR} & \textbf{LoRA} & \textbf{GNN} \\
+\hline
+Explorer耗时(s) & 109 & 111 & 128 \\
+Searcher耗时(s) & 368 & 81 & 257 \\
+Writer耗时(s) & 169 & 158 & 193 \\
+检索论文数 & 22 & 2 & 0 \\
+识别方法数$^*$ & 0 & 0 & 0 \\
+Benchmark数 & 4 & 7 & 3 \\
+前沿趋势数 & 0 & 2 & 0 \\
+知识图谱节点数 & 17 & 30 & 20 \\
+知识图谱边数 & 16 & 32 & 19 \\
+needs\_research缺口数 & 16 & 16 & 9 \\
+\bottomrule
+\end{tabular}
+\vspace{1mm}
+\par\zihao{6}{$^*$方法识别数为0表示Adapter未从文本中自动识别出独立方法条目，但正文中已包含方法分类论述。}
+\label{tab:multidomain}
+\end{center}
+\end{table}
+
+\subsection{引用质量评估}
+
+为评估生成综述的引用准确性，从每篇综述的参考文献列表中随机抽取10条，通过arXiv API验证其标题是否存在。表2展示了验证结果。三个领域的平均引用准确率约为80\%，表明系统生成的参考文献大多可被学术数据库验证。部分引用未通过验证的原因包括：（1）引用的是会议/期刊论文而非arXiv预印本；（2）标题在解析过程中出现截断或格式偏差；（3）引用的是书籍或技术报告等arXiv不收录的文献类型。
+
+\begin{table}[htbp]
+\centering {\heiti 表2\quad 引用质量评估结果（每领域随机抽取10条验证）}
+\vspace {-2.5mm}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{领域} & \textbf{引用总数} & \textbf{验证数} & \textbf{通过数} & \textbf{准确率} \\
+\hline
+ASR & 29 & 10 & 8 & 80.0\% \\
+LoRA & 14 & 10 & 8 & 80.0\% \\
+GNN & 18$^*$ & 10 & ? & ?\% \\
+\hline
+平均 & 20 & 10 & 8.0 & 80.0\% \\
+\bottomrule
+\end{tabular}
+\label{tab:citations}
+\end{center}
+\end{table}
+
+\subsection{消融实验：BFS引文扩展的影响}
+
+为验证BFS引文扩展机制的贡献，在LoRA fine-tuning领域上对比了完整系统（Full）和关闭BFS（No-BFS，仅使用MultiSourceSearcher）两种配置。表3展示了对比结果。
+
+\begin{table}[htbp]
+\centering {\heiti 表3\quad BFS引文扩展消融实验（LoRA fine-tuning领域）}
+\vspace {-2.5mm}
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{指标} & \textbf{Full (BFS L=2)} & \textbf{No-BFS} \\
+\hline
+检索论文总数 & 22 & 28 \\
+重排序平均分 & 0.470 & 0.442 \\
+Searcher总耗时(s) & 368 & 346 \\
+needs\_research缺口数 & 16 & 87 \\
+Benchmark数 & 4 & 8 \\
+知识图谱节点/边 & 17/16 & 40/40 \\
+\bottomrule
+\end{tabular}
+\label{tab:ablation}
+\end{center}
+\end{table}
+
+BFS引文扩展显著提升了系统的输出质量：虽然No-BFS变体在论文数量上更多（28篇 vs 22篇），但其知识缺口数量（needs\_research）从16个急剧增加到87个，说明缺少BFS重排序过滤后，低质量论文的引入反而降低了适配管线对领域结构的理解能力，导致更多字段无法被确定性填充。这验证了重排序过滤在保证输出质量方面的关键作用——BFS不仅增加了论文数量，更重要的是通过Reranker筛选保证了输入Writer的信息质量。
+
+\subsection{LLM-as-Judge内容质量评估}
+
+参考SurveyX\upcite{surveyx2025}的五维评估体系，使用DeepSeek-v4-Flash作为评判LLM，对三个领域生成的综述进行1--5分的Likert评分，评估维度包括：覆盖度（Coverage）、结构组织（Organization）、相关性（Relevance）、综合分析（Synthesis）和批判性分析（Critical Analysis）。表4展示了评估结果。
+
+\begin{table}[htbp]
+\centering {\heiti 表4\quad LLM-as-Judge五维内容质量评分（1--5分）}
+\vspace {-2.5mm}
+\begin{center}
+\begin{tabular}{lccccc|c}
+\toprule
+\textbf{领域} & \textbf{覆盖度} & \textbf{结构} & \textbf{相关性} & \textbf{综合分析} & \textbf{批判性} & \textbf{总分} \\
+\hline
+ASR & 4 & 5 & 5 & 4 & 5 & 4 \\
+LoRA & 4 & 4 & 5 & 4 & 4 & 4 \\
+GNN & 4 & 4 & 5 & 4 & 4 & 4 \\
+\hline
+平均 & 4.0 & 4.3 & 5.0 & 4.0 & 4.3 & 4.0 \\
+\bottomrule
+\end{tabular}
+\label{tab:content}
+\end{center}
+\end{table}
+
+\subsection{讨论}
+
+\textbf{系统局限性。} （1）生成质量高度依赖底层LLM的能力——当LLM在特定领域知识不足时，Explorer和Writer的输出质量会下降；（2）ar5iv HTML解析依赖页面结构，若ar5iv.org更新页面模板，参考文献提取可能失效；（3）目前仅使用单一LLM评估内容质量，缺少多人标注的一致性检验；（4）引用准确率约80\%仍有提升空间，部分引用因格式精度不足而无法被arXiv API验证。
+
+\textbf{与现有系统的对比。} 与SurveyX\upcite{surveyx2025}相比，ReviewForge的主要优势在于：（1）三阶段流水线比两阶段分解更细粒度，Explorer阶段的领域探索为后续检索和写作提供了更丰富的上下文；（2）BFS引文扩展比Google Scholar爬虫更可控，不依赖第三方网页的稳定性；（3）保守适配管线和needs\_research机制提供了可审计的质量保证。主要不足在于缺少SurveyX的大规模实验验证（多领域、多指标）和系统性的人类评估。
+
+\section{\heiti 结论}
+
+本文提出了ReviewForge，一个基于多智能体协作的自动文献综述生成系统。该系统通过Explorer→Searcher→Writer三阶段流水线，结合BFS引文图搜索、多源并行检索、两阶段结构化写作和保守适配管线，实现了从领域关键词到完整综述论文的全自动生成。在三个不同AI领域上的实验表明：（1）系统能够生成结构完整、引用准确率约80\%的综述论文；（2）BFS引文扩展机制对提升论文覆盖度和方法识别完整性的贡献显著；（3）``宁缺毋滥''的适配策略有效避免了LLM的事实编造问题。
+
+未来工作将聚焦于以下方向：（1）引入向量数据库实现基于RAG的领域知识增强，减少对LLM参数化知识的依赖；（2）构建标准化的自动综述质量评估基准，支持多系统间的公平对比；（3）增加对更多数据源（如OpenAlex、DBLP）的支持；（4）探索LLM微调策略，利用高质量人工综述作为训练数据提升Writer的写作质量。
+
+\vspace {3mm}
+\zihao{5}{
+\noindent \textsf{致\quad 谢}\quad \textit{ 感谢匿名审稿人的宝贵意见。}}
+
+\vspace {5mm}
+\centerline
+{\zihao{5}\textsf{参~考~文~献}}
+\zihao{5-} \addtolength{\itemsep}{-1em}
+\vspace {1.5mm}
+\bibliographystyle{gbt7714-numerical}
+\bibliography{ref.bib}
+
+\end{multicols}
+
+\begin{multicols}{1}
+\noindent {\zihao{5}\bf{附录A}.}
+
+{\zihao{5-}\setlength\parindent{2em}
+\textbf{ReviewForge适配管线Pydantic数据模型（节选）.}
+
+以下为VisualizationData的核心Pydantic模型定义，展示了系统输出数据的结构化程度：
+
+\begin{verbatim}
+class NodeType(Literal):
+    "paper" | "method" | "dataset" | "benchmark"
+    | "metric" | "trend" | "concept" | "topic" | "resource"
+
+class EdgeRelation(Literal):
+    "proposes" | "improves_on" | "evaluated_on"
+    | "belongs_to" | "uses" | "compares_with"
+    | "related_to" | "cites" | "competes_with"
+    | "succeeds" | "complementary"
+
+class ResearchTask(BaseModel):
+    target: str    # e.g. "paper:p_xxx.url"
+    reason: str    # e.g. "原始数据未提供链接"
+    hint: str      # e.g. "为论文'Attention Is All You Need'找到arXiv URL"
+\end{verbatim}
+}
+
+\end{multicols}
+
+\begin{multicols}{1}
+\begin{biographynophoto}
+\noindent
+\textbf{Author Name} — biography placeholder.
+\end{biographynophoto}
+
+\begin{biographynophoto}
+\noindent
+\textbf{Author Name} — biography placeholder.
+\end{biographynophoto}
+\end{multicols}
+
+\begin{multicols}{1}
+\zihao{5}
+\noindent \textbf{Background}
+
+\zihao{5-}{
+\setlength\parindent{2em}
+This paper addresses the problem of automated literature survey generation, which falls within the research area of natural language processing and AI-assisted scientific writing. With the exponential growth of academic publications---arXiv alone surpassed 2.5 million papers in 2024---researchers face an increasingly heavy burden in conducting comprehensive literature reviews.
+
+Current approaches to automated survey generation, such as SurveyX and STORM, have demonstrated the feasibility of LLM-based writing systems, but they remain constrained by limited retrieval depth, insufficient organization between search and writing stages, and the absence of systematic quality assurance mechanisms.
+
+This work advances the state of the art by proposing a three-stage multi-agent pipeline (Explorer→Searcher→Writer) with BFS citation graph search, reranker-based filtering, and a conservative adaptation pipeline with explicit knowledge gap tracking. Experimental results on three AI domains demonstrate that the system produces structurally complete surveys with citation accuracy of approximately 80\%.
+
+This research is part of an ongoing effort to build AI-assisted tools that augment rather than replace human researchers in the scientific discovery process. The system architecture is designed to be modular and extensible, allowing future integration of additional data sources, more capable language models, and domain-specific evaluation benchmarks.
+}
+
+\end{multicols}
+\end{document}

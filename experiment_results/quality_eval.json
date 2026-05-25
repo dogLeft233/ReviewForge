@@ -1,0 +1,40 @@
+{
+  "content_scores": {
+    "ASR自动语音识别": {
+      "coverage": 4,
+      "organization": 5,
+      "relevance": 5,
+      "synthesis": 4,
+      "critical_analysis": 5,
+      "overall": 4,
+      "comment": "内容全面、结构清晰，但综合分析部分略显不足。"
+    },
+    "ASR自动语音识别_NoBFS": {
+      "coverage": 4,
+      "organization": 5,
+      "relevance": 5,
+      "synthesis": 4,
+      "critical_analysis": 5,
+      "overall": 5,
+      "comment": "综述结构清晰，分析深入，兼具历史脉络与前沿洞察，但覆盖度略受限于仅展示部分正文。"
+    },
+    "Graph_Neural_Networks": {
+      "coverage": 4,
+      "organization": 4,
+      "relevance": 5,
+      "synthesis": 4,
+      "critical_analysis": 4,
+      "overall": 4,
+      "comment": "综述结构清晰，覆盖了GNN从消息传递到图Transformer的主要范式，分析深入，但正文细节有待充实。"
+    },
+    "LoRA_fine_tuning": {
+      "coverage": 4,
+      "organization": 4,
+      "relevance": 5,
+      "synthesis": 4,
+      "critical_analysis": 4,
+      "overall": 4,
+      "comment": "综述结构清晰，覆盖了LoRA主要技术变体，具备一定的综合分析和批判性，但受限于节选内容，深度和全面性有待完整稿件验证。"
+    }
+  }
+}
