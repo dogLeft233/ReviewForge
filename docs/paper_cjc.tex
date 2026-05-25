@@ -197,8 +197,8 @@ PaSa\upcite{pasa2025}是字节跳动提出的学术论文搜索智能体（发�
 
 ReviewForge的系统架构如图1所示。整体流水线由三个核心智能体串行组成，中间结果自动持久化，支持断点恢复。
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=14cm]{1_new.png}}
+\begin{figure}[H]
+\centerline{\includegraphics[width=14cm]{1_new.jpg}}
 \caption{ReviewForge系统总体架构。用户输入研究领域后，Explorer执行三阶段领域探索并输出ExplorerReport；Searcher基于该报告生成搜索词并执行双路并行检索（BFSSearcher深度扩展 + MultiSourceSearcher广度覆盖）；Writer基于上游结果完成规划和各章节写作；Adapter将原始输出转换为可视化数据。中间结果在每一步自动保存为JSON文件，支持断点恢复。}
 \label{fig:architecture}
 \end{figure}
@@ -243,8 +243,8 @@ BFSSearcher的设计借鉴了PaSa\upcite{pasa2025}的Crawler-Selector双智能�
 
 \textbf{扩展阶段（Expand Phase）：} 对通过筛选的论文，按重排序分数降序排列，取前$K$篇（默认15篇）进入下一层BFS扩展。对于每篇论文，通过ar5iv.org获取其HTML全文，利用BeautifulSoup解析参考文献列表（识别\emph{<span class="ltx\_bibtitle">}等语义标签），提取每篇参考文献的标题。对于每条标题，通过SerpAPI搜索反查其arXiv ID。新发现的论文经重排序过滤后进入下一层BFS循环，直至达到最大层数（默认2层）或无可扩展论文。
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=14cm]{2.png}}
+\begin{figure}[H]
+\centerline{\includegraphics[width=14cm]{2.jpg}}
 \caption{BFSSearcher的双阶段BFS流程。搜索阶段（左）：LLM生成搜索词→SerpAPI检索→ar5iv摘要增强→Reranker打分过滤。扩展阶段（右）：取Top-K论文→ar5iv参考文献解析→标题反查arXiv ID→Reranker过滤→下一层BFS。}
 \label{fig:bfs}
 \end{figure}
@@ -279,8 +279,8 @@ Pipeline的最终输出（PipelineResult）是嵌套的原始Agent文本，需�
 
 适配管线输出的数据结构定义在adapter/schema.py中，包含8种节点类型（论文、方法、数据集、Benchmark、指标、趋势、概念、资源）和11种边关系（提出、改进自、评估于、属于、使用、对比、相关、引用、竞争、继承、互补）。needs\_research字段是一个ResearchTask列表，每条记录包含：（1）target——知识缺口的精确路径（如``paper:p\_attention\_is\_all\_you\_need.url''）；（2）reason——缺失原因；（3）hint——补全建议。这使得知识缺口不仅被记录，还可以被后续人工或自动化的research阶段精确定位和补充。
 
-\begin{figure}[htbp]
-\centerline{\includegraphics[width=14cm]{3.png}}
+\begin{figure}[H]
+\centerline{\includegraphics[width=14cm]{3.jpg}}
 \caption{Adapter三阶段管线：规则提取（确定性解析）→LLM校验（逐模块清理）→可选增强（OpenAI Responses API）。needs\_research机制全程追踪知识缺口。}
 \label{fig:adapter}
 \end{figure}
